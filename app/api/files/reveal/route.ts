@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
-import { resolve, normalize } from "node:path";
-import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
+import { resolve, normalize, basename } from "node:path";
+import { isApiRequestAllowed } from "@/lib/request-security";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
+  if (!isApiRequestAllowed(request)) {
+    return NextResponse.json({ error: "Untrusted API request" }, { status: 403 });
+  }
+
   try {
     const body = (await request.json()) as { path?: string; isDir?: boolean; select?: boolean };
     const rawPath = body?.path?.trim();
@@ -17,11 +21,6 @@ export async function POST(request: NextRequest) {
     }
 
     const resolvedPath = resolve(normalize(rawPath));
-
-    const allowedRoots = await getAllowedFileRoots();
-    if (!isExistingFilePathAllowed(resolvedPath, allowedRoots)) {
-      return NextResponse.json({ error: "Access denied to path outside project roots" }, { status: 403 });
-    }
 
     let isDirectory = Boolean(body.isDir);
     try {
@@ -36,8 +35,7 @@ export async function POST(request: NextRequest) {
     if (process.platform === "win32") {
       const winPath = resolvedPath.replace(/\//g, "\\");
       const escaped = winPath.replace(/'/g, "''");
-      const arg = shouldSelect ? `"/select,\`"${escaped}\`""` : `"\`"${escaped}\`""`;
-      const leafName = normalize(resolvedPath).split(/[\\/]/).pop()?.replace(/'/g, "''") || "";
+      const leafName = basename(resolvedPath).replace(/'/g, "''");
 
       const psScript = `
 Add-Type -TypeDefinition @"
@@ -53,8 +51,14 @@ public class Win32Foreground {
 }
 "@ -ErrorAction SilentlyContinue
 
-Start-Process explorer.exe -ArgumentList ${arg}
-Start-Sleep -Milliseconds 250
+$path = '${escaped}'
+if ('${shouldSelect}' -eq 'true') {
+    Start-Process explorer.exe -ArgumentList @("/select,$path")
+} else {
+    Start-Process explorer.exe -ArgumentList @($path)
+}
+
+Start-Sleep -Milliseconds 200
 
 $ws = New-Object -ComObject WScript.Shell
 $ws.AppActivate('File Explorer') | Out-Null

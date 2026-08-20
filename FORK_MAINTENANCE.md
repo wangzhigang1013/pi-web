@@ -16,6 +16,10 @@
 - **后端环形缓冲区（Ring Buffer）**：后端常驻保存最近 50 万字符的终端日志。
 - **自动防折行与重连恢复**：自适应窗口拖拽 Resize，网络重连或刷新页面时瞬间回放缓冲区日志，保证 `tqdm`、`rich` 进度条原地恢复。
 
+### 3. 文件浏览器一键唤起 Windows 资源管理器（Reveal in Explorer）
+- **文件/文件夹悬浮直达**：在左侧文件浏览器中鼠标悬浮在任何文件或文件夹上，在 `@提及` 按钮右侧新增 **文件夹打开/定位图标**，点击即可直接调起 Windows 资源管理器打开该文件夹或定位选中该文件。
+- **项目根目录一键打开**：在文件浏览器顶栏（刷新/上传旁边）增加文件夹图标，点击一键唤起 Windows 资源管理器打开当前工作区根目录。
+
 ---
 
 ## 📁 改动清单与文件地图（File Map）
@@ -28,12 +32,15 @@
 - `lib/terminal/server.ts`：WebSocket 服务守护进程与消息路由。
 - `lib/terminal/terminal.test.mjs` / `pty.test.mjs`：终端与缓冲区单元测试。
 - `app/api/terminal/info/route.ts`：终端服务端口与状态发现 API。
+- `app/api/files/reveal/route.ts`：系统资源管理器（explorer.exe / open / xdg-open）唤起 API。
 - `components/terminal/WebTerminal.tsx`：xterm.js 前端渲染组件、快捷按键栏（`Ctrl+C`、`Tab`、`↑`、`↓`、`清屏`、`重启`）。
 
 ### 2. 原版代码仅有的轻量修改（挂载点）
 | 文件 | 改动说明 | 冲突防范建议 |
 | :--- | :--- | :--- |
 | `components/AppShell.tsx` | 引入 `WebTerminal`，在顶栏增加终端按钮，在右侧面板增加模式 Tab 切换与常驻挂载 | 如上游重构右侧栏，只需保留 `<WebTerminal />` 的常驻渲染和 `rightPanelTab` 状态 |
+| `components/FileExplorer.tsx` | 在悬浮条目中增加唤起资源管理器按钮 | 保留悬浮操作栏中的打开按钮 |
+| `components/SessionSidebar.tsx` | 在文件浏览器顶栏增加打开项目根目录按钮 | 保留顶栏打开按钮 |
 | `instrumentation.ts` | 服务启动时调用 `ensureTerminalServer()` 预热 WebSocket | 如上游修改 `register()`，只需保留对 `ensureTerminalServer` 的调用 |
 | `next.config.ts` | `serverExternalPackages` 中增加 `"node-pty"`, `"ws"` | 保持这两个依赖在 external packages 列表中即可 |
 | `package.json` | 增加 `@xterm/xterm`、`@xterm/addon-fit`、`@xterm/addon-web-links`、`node-pty`、`ws` | 依赖合并时保留这些包 |

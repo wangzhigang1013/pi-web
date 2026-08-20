@@ -1715,6 +1715,27 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             )}
             {explorerOpen && (
               <ToolbarIconButton
+                onClick={() => {
+                  const targetCwd = selectedCwd ?? selectedCwdProp;
+                  if (targetCwd) {
+                    fetch("/api/files/reveal", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ path: targetCwd, isDir: true }),
+                    }).catch(console.error);
+                  }
+                }}
+                title="在 Windows 资源管理器中打开项目文件夹"
+                color="var(--text-dim)"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                  <polyline points="14 11 18 15 14 19" />
+                </svg>
+              </ToolbarIconButton>
+            )}
+            {explorerOpen && (
+              <ToolbarIconButton
                 onClick={() => fileExplorerRef.current?.openUploadPicker()}
                 disabled={explorerUploadBusy}
                 title={t("sidebar.uploadFilesTitle")}

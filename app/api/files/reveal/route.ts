@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
-import { resolve, normalize, join } from "node:path";
+import { resolve, normalize } from "node:path";
 import { isApiRequestAllowed } from "@/lib/request-security";
 
 export const dynamic = "force-dynamic";
@@ -43,16 +43,24 @@ export async function POST(request: NextRequest) {
 
     if (process.platform === "win32") {
       const winPath = resolvedPath.replace(/\//g, "\\");
-      const explorerExe = join(process.env.WINDIR || "C:\\Windows", "explorer.exe");
       
-      // Use windowsVerbatimArguments to prevent Node from mangling /select,"path" command line syntax
-      const arg = shouldSelect ? `/select,"${winPath}"` : `"${winPath}"`;
-      const child = spawn(explorerExe, [arg], {
-        windowsVerbatimArguments: true,
-        detached: true,
-        stdio: "ignore",
-      });
-      child.unref();
+      if (shouldSelect) {
+        // For files: Use WScript.Shell Run with WindowStyle 1 (SW_SHOWNORMAL) to ensure it breaks out of hidden parent session and pops to front
+        const escaped = winPath.replace(/'/g, "''").replace(/"/g, '`"');
+        const psCmd = `(New-Object -ComObject WScript.Shell).Run('explorer.exe /select,"${escaped}"', 1, $false)`;
+        const child = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", psCmd], {
+          detached: true,
+          stdio: "ignore",
+        });
+        child.unref();
+      } else {
+        // For directories: rundll32 FileProtocolHandler directly dispatches to the interactive Windows Shell host
+        const child = spawn("rundll32.exe", ["url.dll,FileProtocolHandler", winPath], {
+          detached: true,
+          stdio: "ignore",
+        });
+        child.unref();
+      }
     } else if (process.platform === "darwin") {
       const args = shouldSelect ? ["-R", resolvedPath] : [resolvedPath];
       const child = spawn("open", args, {

@@ -35,8 +35,43 @@ export async function POST(request: NextRequest) {
 
     if (process.platform === "win32") {
       const winPath = resolvedPath.replace(/\//g, "\\");
-      const args = shouldSelect ? [`/select,${winPath}`] : [winPath];
-      const child = spawn("explorer.exe", args, {
+      const escaped = winPath.replace(/'/g, "''");
+      const arg = shouldSelect ? `"/select,\`"${escaped}\`""` : `"\`"${escaped}\`""`;
+      const leafName = normalize(resolvedPath).split(/[\\/]/).pop()?.replace(/'/g, "''") || "";
+
+      const psScript = `
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class Win32Foreground {
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll")]
+    public static extern void SwitchToThisWindow(IntPtr hWnd, bool fAltTab);
+}
+"@ -ErrorAction SilentlyContinue
+
+Start-Process explorer.exe -ArgumentList ${arg}
+Start-Sleep -Milliseconds 250
+
+$ws = New-Object -ComObject WScript.Shell
+$ws.AppActivate('File Explorer') | Out-Null
+$ws.AppActivate('文件资源管理器') | Out-Null
+if ('${leafName}') {
+    $ws.AppActivate('${leafName}') | Out-Null
+}
+
+$explorers = Get-Process explorer -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 }
+foreach ($exp in $explorers) {
+    [Win32Foreground]::ShowWindow($exp.MainWindowHandle, 9) | Out-Null
+    [Win32Foreground]::SwitchToThisWindow($exp.MainWindowHandle, $true) | Out-Null
+    [Win32Foreground]::SetForegroundWindow($exp.MainWindowHandle) | Out-Null
+}
+`;
+
+      const child = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", psScript], {
         detached: true,
         stdio: "ignore",
       });

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
-import { resolve, normalize } from "node:path";
+import { resolve, normalize, join } from "node:path";
 import { isApiRequestAllowed } from "@/lib/request-security";
 
 export const dynamic = "force-dynamic";
@@ -27,27 +27,32 @@ export async function POST(request: NextRequest) {
       const pathStat = await stat(resolvedPath);
       isDirectory = pathStat.isDirectory();
     } catch {
-      return NextResponse.json({ error: "File or directory does not exist" }, { status: 404 });
+      // If path itself doesn't exist, check parent
+      try {
+        const parentPath = resolve(resolvedPath, "..");
+        const parentStat = await stat(parentPath);
+        if (!parentStat.isDirectory()) {
+          return NextResponse.json({ error: "File or directory does not exist" }, { status: 404 });
+        }
+      } catch {
+        return NextResponse.json({ error: "File or directory does not exist" }, { status: 404 });
+      }
     }
 
     const shouldSelect = body.select ?? !isDirectory;
 
     if (process.platform === "win32") {
       const winPath = resolvedPath.replace(/\//g, "\\");
-      if (shouldSelect) {
-        const child = spawn("explorer.exe", [`/select,${winPath}`], {
-          detached: true,
-          stdio: "ignore",
-        });
-        child.unref();
-      } else {
-        const cmd = process.env.ComSpec || "cmd.exe";
-        const child = spawn(cmd, ["/c", "start", "", winPath], {
-          detached: true,
-          stdio: "ignore",
-        });
-        child.unref();
-      }
+      const explorerExe = join(process.env.WINDIR || "C:\\Windows", "explorer.exe");
+      
+      // Use windowsVerbatimArguments to prevent Node from mangling /select,"path" command line syntax
+      const arg = shouldSelect ? `/select,"${winPath}"` : `"${winPath}"`;
+      const child = spawn(explorerExe, [arg], {
+        windowsVerbatimArguments: true,
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
     } else if (process.platform === "darwin") {
       const args = shouldSelect ? ["-R", resolvedPath] : [resolvedPath];
       const child = spawn("open", args, {

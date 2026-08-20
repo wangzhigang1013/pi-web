@@ -6,6 +6,7 @@ import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { SessionSidebar } from "./SessionSidebar";
 import { ChatWindow } from "./ChatWindow";
 import { FileViewer } from "./FileViewer";
+import { WebTerminal } from "./terminal/WebTerminal";
 import { TabBar, type Tab } from "./TabBar";
 import { openFileTab, saveFileViewerState } from "./file-tab-state";
 import { ModelsConfig } from "./ModelsConfig";
@@ -108,6 +109,7 @@ export function AppShell() {
   const [projectTrustError, setProjectTrustError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  const [rightPanelTab, setRightPanelTab] = useState<"files" | "terminal">("files");
   const [mobileToolbarMoreOpen, setMobileToolbarMoreOpen] = useState(false);
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
   const sidebarWidthRef = useRef(SIDEBAR_DEFAULT_WIDTH);
@@ -302,8 +304,31 @@ export function AppShell() {
       setActiveTopPanel(null);
       setMobileToolbarMoreOpen(false);
     }
-    setRightPanelOpen((open) => !open);
-  }, [isMobile]);
+    if (!rightPanelOpen) {
+      setRightPanelTab("files");
+      setRightPanelOpen(true);
+    } else if (rightPanelTab === "terminal") {
+      setRightPanelTab("files");
+    } else {
+      setRightPanelOpen(false);
+    }
+  }, [isMobile, rightPanelOpen, rightPanelTab]);
+
+  const handleTerminalToggle = useCallback(() => {
+    if (isMobile) {
+      setSidebarOpen(false);
+      setActiveTopPanel(null);
+      setMobileToolbarMoreOpen(false);
+    }
+    if (!rightPanelOpen) {
+      setRightPanelTab("terminal");
+      setRightPanelOpen(true);
+    } else if (rightPanelTab === "terminal") {
+      setRightPanelOpen(false);
+    } else {
+      setRightPanelTab("terminal");
+    }
+  }, [isMobile, rightPanelOpen, rightPanelTab]);
 
   useEffect(() => {
     if (!mobileToolbarMoreOpen) return;
@@ -801,6 +826,7 @@ export function AppShell() {
       tabId,
     }));
     setActiveFileTabId(tabId);
+    setRightPanelTab("files");
     setRightPanelOpen(true);
     // On mobile the file panel is full-screen; close the drawer so it shows.
     if (isMobile) setSidebarOpen(false);
@@ -1520,6 +1546,42 @@ export function AppShell() {
     );
   };
 
+  const renderMainTerminalToggle = (mobile: boolean) => {
+    const covered = mobile && mobileToolbarMoreOpen;
+    const isTermActive = rightPanelOpen && rightPanelTab === "terminal";
+    return (
+      <button
+        type="button"
+        onClick={handleTerminalToggle}
+        disabled={covered}
+        tabIndex={covered ? -1 : undefined}
+        aria-controls="file-panel"
+        aria-expanded={isTermActive}
+        aria-hidden={covered ? true : undefined}
+        title={isTermActive ? "隐藏终端" : "打开交互终端"}
+        aria-label={isTermActive ? "隐藏终端" : "打开交互终端"}
+        data-mobile-toolbar-terminal={mobile ? "true" : undefined}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
+          visibility: covered ? "hidden" : "visible",
+          pointerEvents: covered ? "none" : "auto",
+          background: isTermActive ? "var(--bg-selected)" : "none",
+          border: "none", borderLeft: "1px solid var(--border)",
+          color: isTermActive ? "var(--accent)" : "var(--text-muted)",
+          cursor: "pointer", flexShrink: 0, transition: "color 0.12s, background 0.12s",
+        }}
+        onMouseEnter={(event) => { if (!covered) event.currentTarget.style.color = "var(--text)"; }}
+        onMouseLeave={(event) => { event.currentTarget.style.color = isTermActive ? "var(--accent)" : "var(--text-muted)"; }}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <polyline points="4 17 10 11 4 5" />
+          <line x1="12" y1="19" x2="20" y2="19" />
+        </svg>
+      </button>
+    );
+  };
+
   const renderMainFileToggle = (mobile: boolean) => {
     const covered = mobile && mobileToolbarMoreOpen;
     return (
@@ -1766,6 +1828,7 @@ export function AppShell() {
               </button>
               {renderSessionStatsButton(true)}
               {renderMainFileToggle(true)}
+              {renderMainTerminalToggle(true)}
               {mobileToolbarMoreOpen && (
                 <div
                   id="mobile-toolbar-actions"
@@ -1801,6 +1864,7 @@ export function AppShell() {
             </>
           )}
           {!isMobile && renderMainFileToggle(false)}
+          {!isMobile && renderMainTerminalToggle(false)}
           {isMobile && (
             <BranchNavigator
               tree={branchTree}
@@ -2184,7 +2248,47 @@ export function AppShell() {
           background: "var(--bg-panel)",
           borderBottom: "1px solid var(--border)",
         }}>
-          <div style={{ flex: 1, overflow: "hidden" }}>
+          {/* Mode Switcher Tabs */}
+          <div style={{ display: "flex", alignItems: "stretch", height: "100%", borderRight: "1px solid var(--border)", flexShrink: 0 }}>
+            <button
+              type="button"
+              onClick={() => setRightPanelTab("files")}
+              style={{
+                display: "flex", alignItems: "center", gap: 5, height: "100%", padding: "0 12px",
+                border: "none", borderBottom: rightPanelTab === "files" ? "2px solid var(--accent)" : "2px solid transparent",
+                background: rightPanelTab === "files" ? "var(--bg)" : "transparent",
+                color: rightPanelTab === "files" ? "var(--text)" : "var(--text-muted)",
+                fontSize: 12, fontWeight: rightPanelTab === "files" ? 600 : 400, cursor: "pointer",
+                transition: "all 0.12s ease",
+              }}
+              title="查看文件"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><polyline points="13 2 13 9 20 9" />
+              </svg>
+              文件
+            </button>
+            <button
+              type="button"
+              onClick={() => setRightPanelTab("terminal")}
+              style={{
+                display: "flex", alignItems: "center", gap: 5, height: "100%", padding: "0 12px",
+                border: "none", borderBottom: rightPanelTab === "terminal" ? "2px solid var(--accent)" : "2px solid transparent",
+                background: rightPanelTab === "terminal" ? "var(--bg)" : "transparent",
+                color: rightPanelTab === "terminal" ? "var(--text)" : "var(--text-muted)",
+                fontSize: 12, fontWeight: rightPanelTab === "terminal" ? 600 : 400, cursor: "pointer",
+                transition: "all 0.12s ease",
+              }}
+              title="打开交互终端"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" />
+              </svg>
+              终端
+            </button>
+          </div>
+
+          <div style={{ flex: 1, overflow: "hidden", display: rightPanelTab === "files" ? "block" : "none" }}>
             <TabBar
               tabs={fileTabs}
               activeTabId={activeFileTabId ?? ""}
@@ -2192,6 +2296,11 @@ export function AppShell() {
               onCloseTab={handleCloseFileTab}
             />
           </div>
+          {rightPanelTab === "terminal" && (
+            <div style={{ flex: 1, padding: "0 10px", fontSize: 12, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              命令行终端 (PowerShell / Shell)
+            </div>
+          )}
           <button
             type="button"
             onClick={() => setRightPanelOpen(false)}
@@ -2215,7 +2324,7 @@ export function AppShell() {
         </div>
 
         {/* Only the active viewer is mounted. Lightweight per-tab state is restored on activation. */}
-        <div style={{ flex: 1, overflow: "hidden", paddingBottom: "env(safe-area-inset-bottom)" }}>
+        <div style={{ flex: 1, overflow: "hidden", display: rightPanelTab === "files" ? "flex" : "none", flexDirection: "column", paddingBottom: "env(safe-area-inset-bottom)" }}>
           {activeFileTab?.filePath ? (
             <FileViewer
               key={`${activeFileTab.id}:${activeFileTab.viewerRevision ?? 0}`}
@@ -2225,7 +2334,7 @@ export function AppShell() {
               gitRefreshKey={explorerRefreshKey}
               initialDisplayMode={activeFileTab.initialDisplayMode}
               initialState={activeFileTab.viewerState}
-              watchEnabled={rightPanelOpen}
+              watchEnabled={rightPanelOpen && rightPanelTab === "files"}
               onStateChange={(viewerState) => handleFileViewerStateChange(
                 activeFileTab.id,
                 activeFileTab.viewerRevision ?? 0,
@@ -2244,6 +2353,15 @@ export function AppShell() {
                {translate("files.noneOpen")}
             </div>
           )}
+        </div>
+
+        {/* Terminal view (always kept in DOM to prevent process and scroll loss) */}
+        <div style={{ flex: 1, overflow: "hidden", display: rightPanelTab === "terminal" ? "flex" : "none", flexDirection: "column", paddingBottom: "env(safe-area-inset-bottom)" }}>
+          <WebTerminal
+            sessionId={selectedSession?.id ?? "global"}
+            cwd={activeCwd ?? undefined}
+            isActive={rightPanelOpen && rightPanelTab === "terminal"}
+          />
         </div>
       </div>
     </div>

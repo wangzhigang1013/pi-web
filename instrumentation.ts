@@ -3,4 +3,11 @@ export async function register(): Promise<void> {
 
   const { configureHttpDispatcher } = await import("@/lib/http-dispatcher");
   configureHttpDispatcher();
+
+  try {
+    const { ensureTerminalServer } = await import("@/lib/terminal/server");
+    await ensureTerminalServer();
+  } catch (err) {
+    console.warn("[Terminal] Failed to start terminal server on startup:", err);
+  }
 }

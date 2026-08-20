@@ -34,7 +34,8 @@ export async function POST(request: NextRequest) {
     const shouldSelect = body.select ?? !isDirectory;
 
     if (process.platform === "win32") {
-      const args = shouldSelect ? [`/select,${resolvedPath}`] : [resolvedPath];
+      const winPath = resolvedPath.replace(/\//g, "\\");
+      const args = shouldSelect ? [`/select,${winPath}`] : [winPath];
       const child = spawn("explorer.exe", args, {
         detached: true,
         stdio: "ignore",

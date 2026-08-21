@@ -24,6 +24,10 @@
 - **顶栏状态感知**：顶栏常驻 ☁️ 云端同步按钮，实时感知 `~/.pi` 与 GitHub 远端状态（🟢 已同步 / 🔵 云端有更新 / 🟡 本地有改动）。
 - **一键双向同步**：点击气泡一键拉取云端新配置或备份本地最新修改，配合 `/sync` 斜杠指令。
 
+### 5. 底部输入栏 Plan（方案模式）与 Edit（修改模式）一键开关
+- **双模快捷开关**：在底部输入栏模型选择器右侧，新增 **`[ 📋 Plan ]`** 与 **`[ ✏️ Edit ]`** 独立开关按钮。
+- **高亮状态常驻**：点击激活后按钮持续保持高亮（方案模式蓝光、修改模式橙光），再次点击或切换模式自动关闭，支持双向会话状态感知。
+
 ---
 
 ## 📁 改动清单与文件地图（File Map）
@@ -46,6 +50,8 @@
 | 文件 | 改动说明 | 冲突防范建议 |
 | :--- | :--- | :--- |
 | `components/AppShell.tsx` | 引入 `WebTerminal` 与 `CloudSyncButton`，在顶栏挂载 | 保留顶栏按钮与 `<WebTerminal />` 常驻渲染 |
+| `components/ChatInput.tsx` | 在底部输入栏增加 Plan 与 Edit 模式切换按钮 | 保留底部快捷模式切换按钮 |
+| `components/ChatWindow.tsx` | 向 ChatInput 传递 extensionStatuses 状态 | 保留状态传递 |
 | `components/FileExplorer.tsx` | 在悬浮条目中增加唤起资源管理器按钮 | 保留悬浮操作栏中的打开按钮 |
 | `components/SessionSidebar.tsx` | 在文件浏览器顶栏增加打开项目根目录按钮 | 保留顶栏打开按钮 |
 | `instrumentation.ts` | 服务启动时调用 `ensureTerminalServer()` 预热 WebSocket | 如上游修改 `register()`，只需保留对 `ensureTerminalServer` 的调用 |

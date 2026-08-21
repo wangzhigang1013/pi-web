@@ -25,6 +25,7 @@ import {
 import { FolderIcon, getFileIcon } from "./FileIcons";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
+import type { ExtensionStatusItem } from "@/lib/types";
 import type { ToolPreset } from "@/lib/tool-presets";
 
 export interface AttachedImage {
@@ -80,6 +81,7 @@ interface Props {
   draftKey?: string;
   /** Session working directory — enables the @ file autocomplete menu */
   cwd?: string | null;
+  extensionStatuses?: ExtensionStatusItem[];
 }
 
 export interface ChatInputHandle {
@@ -392,10 +394,28 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onPromptWithStreamingBehavior,
   draftKey,
   cwd,
+  extensionStatuses,
 }: Props, ref) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const [value, setValue] = useState(() => (draftKey ? getDraft(draftKey)?.value ?? "" : ""));
+  const [isPlanActive, setIsPlanActive] = useState(false);
+  const [isEditActive, setIsEditActive] = useState(false);
+
+  // Sync mode state from extensionStatuses
+  useEffect(() => {
+    const discussStatus = extensionStatuses?.find((s) => s.key === "discuss-plan")?.text || "";
+    if (discussStatus.includes("方案")) {
+      setIsPlanActive(true);
+      setIsEditActive(false);
+    } else if (discussStatus.includes("修改模式") || discussStatus.includes("只改不跑")) {
+      setIsEditActive(true);
+      setIsPlanActive(false);
+    } else {
+      setIsPlanActive(false);
+      setIsEditActive(false);
+    }
+  }, [extensionStatuses]);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [modelDropdownRect, setModelDropdownRect] = useState<{ top: number; left: number; width: number } | null>(null);
   const [modelFilter, setModelFilter] = useState("");
@@ -2223,6 +2243,124 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   })()}
                 </div>
             )}
+
+            {/* Plan & Edit Mode Toggle Buttons */}
+            <div style={{ display: "flex", alignItems: "center", gap: 3, marginLeft: isMobile ? 0 : 4, flexShrink: 0 }}>
+              {/* Plan Mode Toggle */}
+              <button
+                type="button"
+                disabled={isStreaming}
+                onClick={() => {
+                  if (isStreaming) return;
+                  const nextActive = !isPlanActive;
+                  setIsPlanActive(nextActive);
+                  if (nextActive) {
+                    setIsEditActive(false);
+                    onSend("/plan start");
+                  } else {
+                    onSend("/plan exit");
+                  }
+                }}
+                title={
+                  isPlanActive
+                    ? "方案模式（已开启）：只读探索并编写方案，点击退出"
+                    : "开启方案模式 (/plan)：只读探索 + 方案讨论，不擅自执行"
+                }
+                aria-label="方案模式"
+                aria-pressed={isPlanActive}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                  padding: isMobile ? "0 7px" : "0 10px",
+                  height: 32,
+                  borderRadius: 9,
+                  border: isPlanActive ? "1px solid #38bdf8" : "1px solid transparent",
+                  background: isPlanActive ? "color-mix(in srgb, #38bdf8 18%, var(--bg-hover))" : "none",
+                  color: isPlanActive ? "#38bdf8" : "var(--text-muted)",
+                  cursor: isStreaming ? "not-allowed" : "pointer",
+                  fontSize: 12,
+                  fontWeight: isPlanActive ? 600 : 500,
+                  opacity: isStreaming ? 0.5 : 1,
+                  transition: "all 0.12s ease",
+                  flexShrink: 0,
+                }}
+                onMouseEnter={(e) => {
+                  if (isStreaming || isPlanActive) return;
+                  e.currentTarget.style.background = "var(--bg-hover)";
+                  e.currentTarget.style.color = "var(--text)";
+                }}
+                onMouseLeave={(e) => {
+                  if (isPlanActive) return;
+                  e.currentTarget.style.background = "none";
+                  e.currentTarget.style.color = "var(--text-muted)";
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                  <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+                  <path d="M9 14l2 2 4-4" />
+                </svg>
+                <span>Plan</span>
+              </button>
+
+              {/* Edit Mode Toggle */}
+              <button
+                type="button"
+                disabled={isStreaming}
+                onClick={() => {
+                  if (isStreaming) return;
+                  const nextActive = !isEditActive;
+                  setIsEditActive(nextActive);
+                  if (nextActive) {
+                    setIsPlanActive(false);
+                    onSend("/edit start");
+                  } else {
+                    onSend("/edit exit");
+                  }
+                }}
+                title={
+                  isEditActive
+                    ? "修改模式（已开启）：只改代码不执行任何命令，点击退出"
+                    : "开启修改模式 (/edit)：可读写文件，完全禁用命令执行（只改不跑）"
+                }
+                aria-label="修改模式"
+                aria-pressed={isEditActive}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                  padding: isMobile ? "0 7px" : "0 10px",
+                  height: 32,
+                  borderRadius: 9,
+                  border: isEditActive ? "1px solid #f59e0b" : "1px solid transparent",
+                  background: isEditActive ? "color-mix(in srgb, #f59e0b 18%, var(--bg-hover))" : "none",
+                  color: isEditActive ? "#f59e0b" : "var(--text-muted)",
+                  cursor: isStreaming ? "not-allowed" : "pointer",
+                  fontSize: 12,
+                  fontWeight: isEditActive ? 600 : 500,
+                  opacity: isStreaming ? 0.5 : 1,
+                  transition: "all 0.12s ease",
+                  flexShrink: 0,
+                }}
+                onMouseEnter={(e) => {
+                  if (isStreaming || isEditActive) return;
+                  e.currentTarget.style.background = "var(--bg-hover)";
+                  e.currentTarget.style.color = "var(--text)";
+                }}
+                onMouseLeave={(e) => {
+                  if (isEditActive) return;
+                  e.currentTarget.style.background = "none";
+                  e.currentTarget.style.color = "var(--text-muted)";
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                </svg>
+                <span>Edit</span>
+              </button>
+            </div>
           </div>
 
           {/* spacer */}

@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import type { DotPiStatus } from "@/lib/dotpi/sync-service";
+import type { UnifiedSyncStatus, RepoStatus } from "@/lib/dotpi/sync-service";
 
 export function CloudSyncButton({ iconButtonSize = 36 }: { iconButtonSize?: number }) {
-  const [status, setStatus] = useState<DotPiStatus | null>(null);
+  const [status, setStatus] = useState<UnifiedSyncStatus | null>(null);
   const [popoverOpen, setPopoverOpen] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncingTarget, setSyncingTarget] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -16,7 +16,7 @@ export function CloudSyncButton({ iconButtonSize = 36 }: { iconButtonSize?: numb
     try {
       const res = await fetch("/api/dotpi/status");
       if (res.ok) {
-        const data = (await res.json()) as DotPiStatus;
+        const data = (await res.json()) as UnifiedSyncStatus;
         setStatus(data);
       }
     } catch {
@@ -45,14 +45,11 @@ export function CloudSyncButton({ iconButtonSize = 36 }: { iconButtonSize?: numb
   const updatePosition = useCallback(() => {
     if (!buttonRef.current) return;
     const rect = buttonRef.current.getBoundingClientRect();
-    const targetWidth = 340;
+    const targetWidth = 360;
     const maxWidth = Math.min(targetWidth, window.innerWidth - 24);
 
-    // Calculate left position so it aligns with button right edge, clamped within screen margins
     let left = rect.right - maxWidth;
-    if (left < 12) {
-      left = 12;
-    }
+    if (left < 12) left = 12;
     if (left + maxWidth > window.innerWidth - 12) {
       left = window.innerWidth - 12 - maxWidth;
     }
@@ -71,7 +68,6 @@ export function CloudSyncButton({ iconButtonSize = 36 }: { iconButtonSize?: numb
     setPopoverOpen((v) => !v);
   };
 
-  // Reposition on window resize or scroll
   useEffect(() => {
     if (!popoverOpen) return;
     const handleReposition = () => updatePosition();
@@ -83,7 +79,6 @@ export function CloudSyncButton({ iconButtonSize = 36 }: { iconButtonSize?: numb
     };
   }, [popoverOpen, updatePosition]);
 
-  // Click outside to close popover
   useEffect(() => {
     if (!popoverOpen) return;
     const handleClickOutside = (event: MouseEvent) => {
@@ -100,18 +95,21 @@ export function CloudSyncButton({ iconButtonSize = 36 }: { iconButtonSize?: numb
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [popoverOpen]);
 
-  const handleSync = async (mode: "pull" | "push" | "auto") => {
-    setIsSyncing(true);
+  const handleSync = async (target: "dot-pi" | "pi-web" | "all", mode: "pull" | "push" | "auto") => {
+    setSyncingTarget(target);
     setFeedback(null);
     try {
       const res = await fetch("/api/dotpi/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode }),
+        body: JSON.stringify({ target, mode }),
       });
       const result = await res.json();
       if (res.ok && result.success) {
-        setFeedback({ type: "success", text: result.message || "同步成功" });
+        const msg = result.results
+          ?.map((r: { repo: string; message: string }) => `${r.repo}: ${r.message}`)
+          .join("； ") || "同步成功";
+        setFeedback({ type: "success", text: msg });
         if (result.status) setStatus(result.status);
       } else {
         setFeedback({ type: "error", text: result.error || "同步失败" });
@@ -119,22 +117,156 @@ export function CloudSyncButton({ iconButtonSize = 36 }: { iconButtonSize?: numb
     } catch (err) {
       setFeedback({ type: "error", text: err instanceof Error ? err.message : "网络错误" });
     } finally {
-      setIsSyncing(false);
+      setSyncingTarget(null);
     }
   };
 
-  const hasCloudUpdates = Boolean(status && status.behind > 0);
-  const hasLocalChanges = Boolean(status && (status.isDirty || status.ahead > 0));
+  const hasCloudUpdates = Boolean(status?.hasCloudUpdates);
+  const hasLocalChanges = Boolean(status?.hasLocalChanges);
 
   let badgeColor = "#22c55e"; // green
-  let tooltipText = "配置已与 GitHub (dot-pi) 同步";
+  let tooltipText = "全部仓库已与 GitHub 同步";
   if (hasCloudUpdates) {
     badgeColor = "#38bdf8"; // sky blue
-    tooltipText = `发现云端有 ${status?.behind} 个新配置更新，点击同步`;
+    tooltipText = `发现云端有 ${status?.totalBehind} 个新提交，点击同步`;
   } else if (hasLocalChanges) {
     badgeColor = "#f59e0b"; // amber/orange
-    tooltipText = "本地有未同步配置改动，点击备份";
+    tooltipText = "本地有未同步代码/配置改动，点击备份";
   }
+
+  const renderRepoCard = (repo: RepoStatus) => {
+    const isTargetSyncing = syncingTarget === repo.id || syncingTarget === "all";
+    const repoBehind = repo.behind > 0;
+    const repoDirty = repo.isDirty || repo.ahead > 0;
+
+    let repoBadgeColor = "#22c55e";
+    let repoBadgeText = "已同步";
+    if (repoBehind) {
+      repoBadgeColor = "#38bdf8";
+      repoBadgeText = `云端领先 ${repo.behind}`;
+    } else if (repoDirty) {
+      repoBadgeColor = "#f59e0b";
+      repoBadgeText = repo.isDirty ? "本地有改动" : `领先 ${repo.ahead} 提交`;
+    }
+
+    return (
+      <div
+        key={repo.id}
+        style={{
+          background: "var(--bg)",
+          border: "1px solid var(--border)",
+          borderRadius: 6,
+          padding: 8,
+          marginBottom: 8,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+          <span style={{ fontWeight: 600, fontSize: 12, display: "flex", alignItems: "center", gap: 5 }}>
+            <span>{repo.id === "dot-pi" ? "🪐" : "🌐"}</span>
+            <span>{repo.id}</span>
+          </span>
+          <span
+            style={{
+              fontSize: 10.5,
+              padding: "1px 5px",
+              borderRadius: 4,
+              background: repoBehind
+                ? "rgba(56, 189, 248, 0.15)"
+                : repoDirty
+                ? "rgba(245, 158, 11, 0.15)"
+                : "rgba(34, 197, 94, 0.15)",
+              color: repoBadgeColor,
+              fontWeight: 600,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 3,
+            }}
+          >
+            <span style={{ width: 4, height: 4, borderRadius: "50%", backgroundColor: repoBadgeColor }} />
+            {repoBadgeText}
+          </span>
+        </div>
+
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6, lineHeight: 1.3 }}>
+          {repo.lastCommit ? (
+            <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              最新提交: {repo.lastCommit}
+            </div>
+          ) : (
+            <div>就绪</div>
+          )}
+          {repo.dirtyFiles.length > 0 && (
+            <div style={{ color: "#f59e0b", marginTop: 2, fontSize: 10.5 }}>
+              未提交文件 ({repo.dirtyFiles.length}): {repo.dirtyFiles.slice(0, 2).join(", ")}
+              {repo.dirtyFiles.length > 2 && "..."}
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: "flex", gap: 4 }}>
+          {repoBehind ? (
+            <button
+              type="button"
+              disabled={Boolean(syncingTarget)}
+              onClick={() => void handleSync(repo.id, "pull")}
+              style={{
+                flex: 1,
+                height: 24,
+                background: "var(--accent)",
+                color: "#fff",
+                border: "none",
+                borderRadius: 4,
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: isTargetSyncing ? "not-allowed" : "pointer",
+                opacity: isTargetSyncing ? 0.7 : 1,
+              }}
+            >
+              {isTargetSyncing ? "拉取中..." : "⬇️ 拉取云端更新"}
+            </button>
+          ) : repoDirty ? (
+            <button
+              type="button"
+              disabled={Boolean(syncingTarget)}
+              onClick={() => void handleSync(repo.id, "push")}
+              style={{
+                flex: 1,
+                height: 24,
+                background: "#f59e0b",
+                color: "#fff",
+                border: "none",
+                borderRadius: 4,
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: isTargetSyncing ? "not-allowed" : "pointer",
+                opacity: isTargetSyncing ? 0.7 : 1,
+              }}
+            >
+              {isTargetSyncing ? "推送中..." : "⬆️ 推送备份到 GitHub"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={Boolean(syncingTarget)}
+              onClick={() => void handleSync(repo.id, "auto")}
+              style={{
+                flex: 1,
+                height: 24,
+                background: "var(--bg-selected)",
+                color: "var(--text-muted)",
+                border: "1px solid var(--border)",
+                borderRadius: 4,
+                fontSize: 11,
+                cursor: isTargetSyncing ? "not-allowed" : "pointer",
+              }}
+            >
+              {isTargetSyncing ? "检查中..." : "🔄 检查"}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <>
@@ -144,7 +276,7 @@ export function CloudSyncButton({ iconButtonSize = 36 }: { iconButtonSize?: numb
           type="button"
           onClick={togglePopover}
           title={tooltipText}
-          aria-label="配置云端同步"
+          aria-label="云端仓库双向同步"
           style={{
             display: "flex",
             alignItems: "center",
@@ -180,25 +312,23 @@ export function CloudSyncButton({ iconButtonSize = 36 }: { iconButtonSize?: numb
           </svg>
 
           {/* Status indicator dot */}
-          {status?.isGitRepo && (
-            <span
-              style={{
-                position: "absolute",
-                top: 7,
-                right: 7,
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                backgroundColor: badgeColor,
-                boxShadow: hasCloudUpdates ? "0 0 6px #38bdf8" : "none",
-                animation: hasCloudUpdates ? "pulse 1.8s infinite" : "none",
-              }}
-            />
-          )}
+          <span
+            style={{
+              position: "absolute",
+              top: 7,
+              right: 7,
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              backgroundColor: badgeColor,
+              boxShadow: hasCloudUpdates ? "0 0 6px #38bdf8" : "none",
+              animation: hasCloudUpdates ? "pulse 1.8s infinite" : "none",
+            }}
+          />
         </button>
       </div>
 
-      {/* Popover Dropdown (Fixed positioned to prevent clipping by overflow boundaries) */}
+      {/* Popover Dropdown */}
       {popoverOpen && dropdownPos && (
         <div
           ref={popoverRef}
@@ -220,59 +350,29 @@ export function CloudSyncButton({ iconButtonSize = 36 }: { iconButtonSize?: numb
             overflowY: "auto",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, paddingBottom: 6, borderBottom: "1px solid var(--border)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, paddingBottom: 6, borderBottom: "1px solid var(--border)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, fontSize: 13 }}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
               </svg>
-              <span>配置云端同步 (~/.pi)</span>
+              <span>云端仓库双向同步</span>
             </div>
-            <span
+            <button
+              type="button"
+              disabled={Boolean(syncingTarget)}
+              onClick={() => void fetchStatus()}
+              title="刷新检测"
               style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
+                background: "none",
+                border: "none",
+                color: "var(--text-muted)",
+                cursor: "pointer",
+                padding: "2px 4px",
                 fontSize: 11,
-                padding: "2px 6px",
-                borderRadius: 4,
-                background: hasCloudUpdates ? "rgba(56, 189, 248, 0.15)" : hasLocalChanges ? "rgba(245, 158, 11, 0.15)" : "rgba(34, 197, 94, 0.15)",
-                color: badgeColor,
-                fontWeight: 600,
               }}
             >
-              <span style={{ width: 5, height: 5, borderRadius: "50%", backgroundColor: badgeColor }} />
-              {hasCloudUpdates ? `云端领先 ${status?.behind} 个提交` : hasLocalChanges ? "本地有改动" : "已同步"}
-            </span>
-          </div>
-
-          {/* Sync Status Description */}
-          <div style={{ marginBottom: 10, color: "var(--text-muted)", lineHeight: 1.4, fontSize: 11.5 }}>
-            {hasCloudUpdates && (
-              <p style={{ color: "#38bdf8", margin: 0, fontWeight: 500 }}>
-                ☁️ 发现云端有新配置（如公司修改的 Prompt 或技能），建议立即拉取更新。
-              </p>
-            )}
-            {!hasCloudUpdates && hasLocalChanges && (
-              <div>
-                <p style={{ color: "#f59e0b", margin: 0, fontWeight: 500 }}>
-                  ✏️ 本地有修改未推送到 GitHub：
-                </p>
-                {status?.dirtyFiles && status.dirtyFiles.length > 0 && (
-                  <div style={{ marginTop: 4, maxHeight: 80, overflowY: "auto", background: "var(--bg)", padding: "4px 6px", borderRadius: 4, fontSize: 10.5, fontFamily: "var(--font-mono)" }}>
-                    {status.dirtyFiles.slice(0, 5).map((f) => (
-                      <div key={f} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>• {f}</div>
-                    ))}
-                    {status.dirtyFiles.length > 5 && <div>...等共 {status.dirtyFiles.length} 个文件</div>}
-                  </div>
-                )}
-              </div>
-            )}
-            {!hasCloudUpdates && !hasLocalChanges && (
-              <p style={{ margin: 0 }}>
-                本地配置、自写扩展与技能库已与云端仓库保持最新。
-                {status?.lastCommit && <span style={{ display: "block", marginTop: 3, opacity: 0.8 }}>最新提交: {status.lastCommit}</span>}
-              </p>
-            )}
+              🔄
+            </button>
           </div>
 
           {/* Feedback Message */}
@@ -295,81 +395,35 @@ export function CloudSyncButton({ iconButtonSize = 36 }: { iconButtonSize?: numb
             </div>
           )}
 
-          {/* Action Buttons */}
-          <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
-            {hasCloudUpdates ? (
-              <button
-                type="button"
-                disabled={isSyncing}
-                onClick={() => void handleSync("pull")}
-                style={{
-                  flex: 1,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                  height: 28,
-                  background: "var(--accent)",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 4,
-                  fontWeight: 600,
-                  fontSize: 11.5,
-                  cursor: isSyncing ? "not-allowed" : "pointer",
-                  opacity: isSyncing ? 0.7 : 1,
-                }}
-              >
-                {isSyncing ? "正在拉取..." : "⬇️ 一键拉取云端配置"}
-              </button>
-            ) : hasLocalChanges ? (
-              <button
-                type="button"
-                disabled={isSyncing}
-                onClick={() => void handleSync("push")}
-                style={{
-                  flex: 1,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                  height: 28,
-                  background: "#f59e0b",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 4,
-                  fontWeight: 600,
-                  fontSize: 11.5,
-                  cursor: isSyncing ? "not-allowed" : "pointer",
-                  opacity: isSyncing ? 0.7 : 1,
-                }}
-              >
-                {isSyncing ? "正在推送..." : "⬆️ 一键备份到 GitHub"}
-              </button>
-            ) : (
-              <button
-                type="button"
-                disabled={isSyncing}
-                onClick={() => void handleSync("auto")}
-                style={{
-                  flex: 1,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                  height: 28,
-                  background: "var(--bg-selected)",
-                  color: "var(--text)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 4,
-                  fontWeight: 500,
-                  fontSize: 11.5,
-                  cursor: isSyncing ? "not-allowed" : "pointer",
-                  opacity: isSyncing ? 0.7 : 1,
-                }}
-              >
-                {isSyncing ? "检查中..." : "🔄 检查并刷新同步"}
-              </button>
-            )}
+          {/* Repositories */}
+          {status?.dotPi && renderRepoCard(status.dotPi)}
+          {status?.piWeb && renderRepoCard(status.piWeb)}
+
+          {/* Master One-click Sync All Button */}
+          <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px solid var(--border)" }}>
+            <button
+              type="button"
+              disabled={Boolean(syncingTarget)}
+              onClick={() => void handleSync("all", "auto")}
+              style={{
+                width: "100%",
+                height: 28,
+                background: hasCloudUpdates ? "var(--accent)" : hasLocalChanges ? "#f59e0b" : "var(--bg-selected)",
+                color: hasCloudUpdates || hasLocalChanges ? "#fff" : "var(--text)",
+                border: "1px solid var(--border)",
+                borderRadius: 5,
+                fontWeight: 600,
+                fontSize: 11.5,
+                cursor: syncingTarget ? "not-allowed" : "pointer",
+                opacity: syncingTarget ? 0.7 : 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+              }}
+            >
+              {syncingTarget === "all" ? "正在全量同步..." : "🚀 一键同步全部仓库 (dot-pi + pi-web)"}
+            </button>
           </div>
         </div>
       )}

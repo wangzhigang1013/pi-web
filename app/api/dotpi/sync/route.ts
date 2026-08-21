@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { performDotPiSync } from "@/lib/dotpi/sync-service";
+import { performRepoSync } from "@/lib/dotpi/sync-service";
 import { isApiRequestAllowed } from "@/lib/request-security";
 
 export const dynamic = "force-dynamic";
@@ -11,8 +11,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = (await request.json().catch(() => ({}))) as { mode?: "pull" | "push" | "auto" };
-    const result = await performDotPiSync(body.mode || "auto");
+    const body = (await request.json().catch(() => ({}))) as {
+      target?: "dot-pi" | "pi-web" | "all";
+      mode?: "pull" | "push" | "auto";
+    };
+    const result = await performRepoSync(body.target || "all", body.mode || "auto");
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(

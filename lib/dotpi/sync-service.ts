@@ -6,7 +6,10 @@ import { promisify } from "node:util";
 
 const execAsync = promisify(exec);
 
-export interface DotPiStatus {
+export interface RepoStatus {
+  id: "dot-pi" | "pi-web";
+  name: string;
+  path: string;
   isGitRepo: boolean;
   ahead: number;
   behind: number;
@@ -15,21 +18,33 @@ export interface DotPiStatus {
   lastCommit?: string;
   remoteUrl?: string;
   error?: string;
+}
+
+export interface UnifiedSyncStatus {
+  dotPi: RepoStatus;
+  piWeb: RepoStatus;
+  hasCloudUpdates: boolean;
+  hasLocalChanges: boolean;
+  totalBehind: number;
+  totalAhead: number;
   lastCheckedAt: number;
 }
 
 const DOT_PI_DIR = join(homedir(), ".pi");
+const PI_WEB_DIR = join(homedir(), "pi-web");
 
-export async function getDotPiStatus(): Promise<DotPiStatus> {
-  const dotGitDir = join(DOT_PI_DIR, ".git");
+async function checkSingleRepo(id: "dot-pi" | "pi-web", name: string, dir: string): Promise<RepoStatus> {
+  const dotGitDir = join(dir, ".git");
   if (!existsSync(dotGitDir)) {
     return {
+      id,
+      name,
+      path: dir,
       isGitRepo: false,
       ahead: 0,
       behind: 0,
       isDirty: false,
       dirtyFiles: [],
-      lastCheckedAt: Date.now(),
     };
   }
 
@@ -37,7 +52,7 @@ export async function getDotPiStatus(): Promise<DotPiStatus> {
     // 1. Fetch silently from origin
     try {
       await execAsync("git fetch --quiet origin", {
-        cwd: DOT_PI_DIR,
+        cwd: dir,
         timeout: 8000,
       });
     } catch {
@@ -46,7 +61,7 @@ export async function getDotPiStatus(): Promise<DotPiStatus> {
 
     // 2. Check local uncommitted changes
     const { stdout: statusOut } = await execAsync("git status --porcelain", {
-      cwd: DOT_PI_DIR,
+      cwd: dir,
       timeout: 5000,
     });
     const dirtyFiles = statusOut
@@ -62,7 +77,7 @@ export async function getDotPiStatus(): Promise<DotPiStatus> {
     try {
       const { stdout: revOut } = await execAsync(
         "git rev-list --left-right --count HEAD...origin/main",
-        { cwd: DOT_PI_DIR, timeout: 5000 }
+        { cwd: dir, timeout: 5000 }
       );
       const parts = revOut.trim().split(/\s+/);
       if (parts.length >= 2) {
@@ -77,7 +92,7 @@ export async function getDotPiStatus(): Promise<DotPiStatus> {
     let lastCommit = "";
     try {
       const { stdout: logOut } = await execAsync("git log -1 --format=%s", {
-        cwd: DOT_PI_DIR,
+        cwd: dir,
         timeout: 3000,
       });
       lastCommit = logOut.trim();
@@ -89,7 +104,7 @@ export async function getDotPiStatus(): Promise<DotPiStatus> {
     let remoteUrl = "";
     try {
       const { stdout: remoteOut } = await execAsync("git config --get remote.origin.url", {
-        cwd: DOT_PI_DIR,
+        cwd: dir,
         timeout: 3000,
       });
       remoteUrl = remoteOut.trim();
@@ -98,6 +113,9 @@ export async function getDotPiStatus(): Promise<DotPiStatus> {
     }
 
     return {
+      id,
+      name,
+      path: dir,
       isGitRepo: true,
       ahead,
       behind,
@@ -105,80 +123,90 @@ export async function getDotPiStatus(): Promise<DotPiStatus> {
       dirtyFiles,
       lastCommit,
       remoteUrl,
-      lastCheckedAt: Date.now(),
     };
   } catch (err) {
     return {
+      id,
+      name,
+      path: dir,
       isGitRepo: true,
       ahead: 0,
       behind: 0,
       isDirty: false,
       dirtyFiles: [],
       error: err instanceof Error ? err.message : String(err),
-      lastCheckedAt: Date.now(),
     };
   }
 }
 
-export async function performDotPiSync(mode: "pull" | "push" | "auto" = "auto"): Promise<{
+export async function getUnifiedSyncStatus(): Promise<UnifiedSyncStatus> {
+  const [dotPi, piWeb] = await Promise.all([
+    checkSingleRepo("dot-pi", "dot-pi (配置与技能库)", DOT_PI_DIR),
+    checkSingleRepo("pi-web", "pi-web (前端交互系统)", PI_WEB_DIR),
+  ]);
+
+  const hasCloudUpdates = dotPi.behind > 0 || piWeb.behind > 0;
+  const hasLocalChanges = dotPi.isDirty || dotPi.ahead > 0 || piWeb.isDirty || piWeb.ahead > 0;
+  const totalBehind = dotPi.behind + piWeb.behind;
+  const totalAhead = dotPi.ahead + piWeb.ahead;
+
+  return {
+    dotPi,
+    piWeb,
+    hasCloudUpdates,
+    hasLocalChanges,
+    totalBehind,
+    totalAhead,
+    lastCheckedAt: Date.now(),
+  };
+}
+
+export async function performRepoSync(
+  target: "dot-pi" | "pi-web" | "all" = "all",
+  mode: "pull" | "push" | "auto" = "auto"
+): Promise<{
   success: boolean;
-  action: "pulled" | "pushed" | "synced" | "none";
-  message: string;
-  status: DotPiStatus;
+  results: Array<{ repo: string; action: string; message: string }>;
+  status: UnifiedSyncStatus;
 }> {
-  const currentStatus = await getDotPiStatus();
-  if (!currentStatus.isGitRepo) {
-    throw new Error("~/.pi 不是一个 Git 仓库");
-  }
+  const results: Array<{ repo: string; action: string; message: string }> = [];
 
-  // Action: Pull from cloud
-  if (mode === "pull" || (mode === "auto" && currentStatus.behind > 0 && !currentStatus.isDirty)) {
-    try {
-      await execAsync("git pull --rebase origin main", {
-        cwd: DOT_PI_DIR,
-        timeout: 15000,
-      });
-      const newStatus = await getDotPiStatus();
-      return {
-        success: true,
-        action: "pulled",
-        message: `成功拉取云端更新（${currentStatus.behind} 个新提交）`,
-        status: newStatus,
-      };
-    } catch (err) {
-      throw new Error(`拉取云端更新失败: ${err instanceof Error ? err.message : String(err)}`);
+  const syncDir = async (repoName: string, dir: string) => {
+    const status = await checkSingleRepo(repoName as "dot-pi" | "pi-web", repoName, dir);
+    if (!status.isGitRepo) return;
+
+    if (mode === "pull" || (mode === "auto" && status.behind > 0 && !status.isDirty)) {
+      await execAsync("git pull --rebase origin main", { cwd: dir, timeout: 20000 });
+      results.push({ repo: repoName, action: "pulled", message: `成功拉取云端 ${status.behind} 个更新` });
+      return;
     }
-  }
 
-  // Action: Push local changes to cloud
-  if (mode === "push" || (mode === "auto" && (currentStatus.isDirty || currentStatus.ahead > 0))) {
-    try {
-      if (currentStatus.isDirty) {
-        await execAsync('git add . && git commit -m "sync: update pi configurations from web"', {
-          cwd: DOT_PI_DIR,
+    if (mode === "push" || (mode === "auto" && (status.isDirty || status.ahead > 0))) {
+      if (status.isDirty) {
+        await execAsync(`git add . && git commit -m "sync: update ${repoName} from cloud sync button"`, {
+          cwd: dir,
           timeout: 10000,
         });
       }
-      await execAsync("git push origin main", {
-        cwd: DOT_PI_DIR,
-        timeout: 15000,
-      });
-      const newStatus = await getDotPiStatus();
-      return {
-        success: true,
-        action: "pushed",
-        message: "已将本地最新配置成功推送到 GitHub 远端",
-        status: newStatus,
-      };
-    } catch (err) {
-      throw new Error(`推送到云端失败: ${err instanceof Error ? err.message : String(err)}`);
+      await execAsync("git push origin main", { cwd: dir, timeout: 20000 });
+      results.push({ repo: repoName, action: "pushed", message: "已推送到 GitHub 远端" });
+      return;
     }
+
+    results.push({ repo: repoName, action: "none", message: "已是最新状态" });
+  };
+
+  if (target === "dot-pi" || target === "all") {
+    await syncDir("dot-pi", DOT_PI_DIR);
+  }
+  if (target === "pi-web" || target === "all") {
+    await syncDir("pi-web", PI_WEB_DIR);
   }
 
+  const updatedStatus = await getUnifiedSyncStatus();
   return {
     success: true,
-    action: "none",
-    message: "配置已是最新，无需同步",
-    status: currentStatus,
+    results,
+    status: updatedStatus,
   };
 }

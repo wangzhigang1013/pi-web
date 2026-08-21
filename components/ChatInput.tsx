@@ -782,8 +782,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       }
     }
     clearInput();
-    onSend(msg, attachedImages.length ? attachedImages : undefined);
-  }, [value, attachedImages, isStreaming, onBuiltinCommand, onSend, clearInput, onAudioUnlock]);
+
+    let textToSend = msg;
+    if (isPlanActive && !msg.startsWith("/")) {
+      textToSend = `[方案规划模式·只读探索]\n【模式规则】：请仅进行只读探索（read/grep/find/ls 等），严禁修改任何业务代码文件，严禁执行 python/node/npm 等运行类命令。请先调查并给出详细的方案与步骤供审阅。\n\n${msg}`;
+    } else if (isEditActive && !msg.startsWith("/")) {
+      textToSend = `[修改模式·只改不跑]\n【模式规则】：允许查看和直接修改代码文件（read/edit/write），但严禁执行任何 python/node/npm/curl 等测试、脚本或终端执行命令（只改不跑）。修改完成后精准说明改动。\n\n${msg}`;
+    }
+
+    onSend(textToSend, attachedImages.length ? attachedImages : undefined);
+  }, [value, attachedImages, isStreaming, onBuiltinCommand, onSend, clearInput, onAudioUnlock, isPlanActive, isEditActive]);
 
   const slashQuery = value.startsWith("/") && !/\s/.test(value.slice(1))
     ? value.slice(1).toLowerCase()
@@ -2249,22 +2257,17 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               {/* Plan Mode Toggle */}
               <button
                 type="button"
-                disabled={isStreaming}
                 onClick={() => {
-                  if (isStreaming) return;
-                  const nextActive = !isPlanActive;
-                  setIsPlanActive(nextActive);
-                  if (nextActive) {
-                    setIsEditActive(false);
-                    onSend("/plan start");
-                  } else {
-                    onSend("/plan exit");
-                  }
+                  setIsPlanActive((prev) => {
+                    const next = !prev;
+                    if (next) setIsEditActive(false);
+                    return next;
+                  });
                 }}
                 title={
                   isPlanActive
-                    ? "方案模式（已开启）：只读探索并编写方案，点击退出"
-                    : "开启方案模式 (/plan)：只读探索 + 方案讨论，不擅自执行"
+                    ? "方案模式（已开启）：点击关闭"
+                    : "开启方案模式：只读探索 + 方案讨论，不擅自改动代码或执行脚本"
                 }
                 aria-label="方案模式"
                 aria-pressed={isPlanActive}
@@ -2278,15 +2281,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   border: isPlanActive ? "1px solid #38bdf8" : "1px solid transparent",
                   background: isPlanActive ? "color-mix(in srgb, #38bdf8 18%, var(--bg-hover))" : "none",
                   color: isPlanActive ? "#38bdf8" : "var(--text-muted)",
-                  cursor: isStreaming ? "not-allowed" : "pointer",
+                  cursor: "pointer",
                   fontSize: 12,
                   fontWeight: isPlanActive ? 600 : 500,
-                  opacity: isStreaming ? 0.5 : 1,
                   transition: "all 0.12s ease",
                   flexShrink: 0,
                 }}
                 onMouseEnter={(e) => {
-                  if (isStreaming || isPlanActive) return;
+                  if (isPlanActive) return;
                   e.currentTarget.style.background = "var(--bg-hover)";
                   e.currentTarget.style.color = "var(--text)";
                 }}
@@ -2307,22 +2309,17 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               {/* Edit Mode Toggle */}
               <button
                 type="button"
-                disabled={isStreaming}
                 onClick={() => {
-                  if (isStreaming) return;
-                  const nextActive = !isEditActive;
-                  setIsEditActive(nextActive);
-                  if (nextActive) {
-                    setIsPlanActive(false);
-                    onSend("/edit start");
-                  } else {
-                    onSend("/edit exit");
-                  }
+                  setIsEditActive((prev) => {
+                    const next = !prev;
+                    if (next) setIsPlanActive(false);
+                    return next;
+                  });
                 }}
                 title={
                   isEditActive
-                    ? "修改模式（已开启）：只改代码不执行任何命令，点击退出"
-                    : "开启修改模式 (/edit)：可读写文件，完全禁用命令执行（只改不跑）"
+                    ? "修改模式（已开启）：点击关闭"
+                    : "开启修改模式：只改代码不执行任何命令（只改不跑）"
                 }
                 aria-label="修改模式"
                 aria-pressed={isEditActive}
@@ -2336,15 +2333,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   border: isEditActive ? "1px solid #f59e0b" : "1px solid transparent",
                   background: isEditActive ? "color-mix(in srgb, #f59e0b 18%, var(--bg-hover))" : "none",
                   color: isEditActive ? "#f59e0b" : "var(--text-muted)",
-                  cursor: isStreaming ? "not-allowed" : "pointer",
+                  cursor: "pointer",
                   fontSize: 12,
                   fontWeight: isEditActive ? 600 : 500,
-                  opacity: isStreaming ? 0.5 : 1,
                   transition: "all 0.12s ease",
                   flexShrink: 0,
                 }}
                 onMouseEnter={(e) => {
-                  if (isStreaming || isEditActive) return;
+                  if (isEditActive) return;
                   e.currentTarget.style.background = "var(--bg-hover)";
                   e.currentTarget.style.color = "var(--text)";
                 }}

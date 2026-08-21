@@ -20,6 +20,10 @@
 - **文件/文件夹悬浮直达**：在左侧文件浏览器中鼠标悬浮在任何文件或文件夹上，在 `@提及` 按钮右侧新增 **文件夹打开/定位图标**，点击即可直接调起 Windows 资源管理器打开该文件夹或定位选中该文件。
 - **项目根目录一键打开**：在文件浏览器顶栏（刷新/上传旁边）增加文件夹图标，点击一键唤起 Windows 资源管理器打开当前工作区根目录。
 
+### 4. 个人全局配置与技能库云端自动感知与一键同步 (CloudSync)
+- **顶栏状态感知**：顶栏常驻 ☁️ 云端同步按钮，实时感知 `~/.pi` 与 GitHub 远端状态（🟢 已同步 / 🔵 云端有更新 / 🟡 本地有改动）。
+- **一键双向同步**：点击气泡一键拉取云端新配置或备份本地最新修改，配合 `/sync` 斜杠指令。
+
 ---
 
 ## 📁 改动清单与文件地图（File Map）
@@ -31,14 +35,17 @@
 - `lib/terminal/ring-buffer.ts`：环形内存缓冲区，用于断线与重连回放。
 - `lib/terminal/server.ts`：WebSocket 服务守护进程与消息路由。
 - `lib/terminal/terminal.test.mjs` / `pty.test.mjs`：终端与缓冲区单元测试。
+- `lib/dotpi/sync-service.ts`：~/.pi 配置与技能库 Git 状态检查与同步服务。
 - `app/api/terminal/info/route.ts`：终端服务端口与状态发现 API。
 - `app/api/files/reveal/route.ts`：系统资源管理器（explorer.exe / open / xdg-open）唤起 API。
+- `app/api/dotpi/status/route.ts` & `app/api/dotpi/sync/route.ts`：dot-pi 状态查询与一键同步 API。
 - `components/terminal/WebTerminal.tsx`：xterm.js 前端渲染组件、快捷按键栏（`Ctrl+C`、`Tab`、`↑`、`↓`、`清屏`、`重启`）。
+- `components/CloudSyncButton.tsx`：顶栏云端同步状态感知与交互组件。
 
 ### 2. 原版代码仅有的轻量修改（挂载点）
 | 文件 | 改动说明 | 冲突防范建议 |
 | :--- | :--- | :--- |
-| `components/AppShell.tsx` | 引入 `WebTerminal`，在顶栏增加终端按钮，在右侧面板增加模式 Tab 切换与常驻挂载 | 如上游重构右侧栏，只需保留 `<WebTerminal />` 的常驻渲染和 `rightPanelTab` 状态 |
+| `components/AppShell.tsx` | 引入 `WebTerminal` 与 `CloudSyncButton`，在顶栏挂载 | 保留顶栏按钮与 `<WebTerminal />` 常驻渲染 |
 | `components/FileExplorer.tsx` | 在悬浮条目中增加唤起资源管理器按钮 | 保留悬浮操作栏中的打开按钮 |
 | `components/SessionSidebar.tsx` | 在文件浏览器顶栏增加打开项目根目录按钮 | 保留顶栏打开按钮 |
 | `instrumentation.ts` | 服务启动时调用 `ensureTerminalServer()` 预热 WebSocket | 如上游修改 `register()`，只需保留对 `ensureTerminalServer` 的调用 |

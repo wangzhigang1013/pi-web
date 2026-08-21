@@ -7,6 +7,7 @@ import { SessionSidebar } from "./SessionSidebar";
 import { ChatWindow } from "./ChatWindow";
 import { FileViewer } from "./FileViewer";
 import { WebTerminal } from "./terminal/WebTerminal";
+import { CloudSyncButton } from "./CloudSyncButton";
 import { TabBar, type Tab } from "./TabBar";
 import { openFileTab, saveFileViewerState } from "./file-tab-state";
 import { ModelsConfig } from "./ModelsConfig";
@@ -1379,6 +1380,7 @@ export function AppShell() {
         </button>
         {mobile && renderThemeButton(true)}
         {mobile && renderLanguageButton(true)}
+        {mobile && <CloudSyncButton iconButtonSize={TOP_BAR_ICON_BUTTON_SIZE} />}
       </div>
     );
   };
@@ -1858,6 +1860,7 @@ export function AppShell() {
             <>
               {renderThemeButton(false)}
               {renderLanguageButton(false)}
+              <CloudSyncButton iconButtonSize={TOP_BAR_ICON_BUTTON_SIZE} />
               {renderProjectTrustWarning(false)}
               {renderChatToolbarActions(false)}
               {renderSessionStatsButton(false)}

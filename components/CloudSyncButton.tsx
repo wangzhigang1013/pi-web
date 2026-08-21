@@ -8,6 +8,7 @@ export function CloudSyncButton({ iconButtonSize = 36 }: { iconButtonSize?: numb
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -40,6 +41,47 @@ export function CloudSyncButton({ iconButtonSize = 36 }: { iconButtonSize?: numb
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [fetchStatus]);
+
+  const updatePosition = useCallback(() => {
+    if (!buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    const targetWidth = 340;
+    const maxWidth = Math.min(targetWidth, window.innerWidth - 24);
+
+    // Calculate left position so it aligns with button right edge, clamped within screen margins
+    let left = rect.right - maxWidth;
+    if (left < 12) {
+      left = 12;
+    }
+    if (left + maxWidth > window.innerWidth - 12) {
+      left = window.innerWidth - 12 - maxWidth;
+    }
+
+    setDropdownPos({
+      top: rect.bottom + 6,
+      left,
+      width: maxWidth,
+    });
+  }, []);
+
+  const togglePopover = () => {
+    if (!popoverOpen) {
+      updatePosition();
+    }
+    setPopoverOpen((v) => !v);
+  };
+
+  // Reposition on window resize or scroll
+  useEffect(() => {
+    if (!popoverOpen) return;
+    const handleReposition = () => updatePosition();
+    window.addEventListener("resize", handleReposition);
+    window.addEventListener("scroll", handleReposition, true);
+    return () => {
+      window.removeEventListener("resize", handleReposition);
+      window.removeEventListener("scroll", handleReposition, true);
+    };
+  }, [popoverOpen, updatePosition]);
 
   // Click outside to close popover
   useEffect(() => {
@@ -85,7 +127,7 @@ export function CloudSyncButton({ iconButtonSize = 36 }: { iconButtonSize?: numb
   const hasLocalChanges = Boolean(status && (status.isDirty || status.ahead > 0));
 
   let badgeColor = "#22c55e"; // green
-  let tooltipText = "配置已与 GitHub 同步";
+  let tooltipText = "配置已与 GitHub (dot-pi) 同步";
   if (hasCloudUpdates) {
     badgeColor = "#38bdf8"; // sky blue
     tooltipText = `发现云端有 ${status?.behind} 个新配置更新，点击同步`;
@@ -95,83 +137,87 @@ export function CloudSyncButton({ iconButtonSize = 36 }: { iconButtonSize?: numb
   }
 
   return (
-    <div style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
-      <button
-        ref={buttonRef}
-        type="button"
-        onClick={() => setPopoverOpen((v) => !v)}
-        title={tooltipText}
-        aria-label="配置云端同步"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          width: iconButtonSize,
-          height: iconButtonSize,
-          padding: 0,
-          background: popoverOpen ? "var(--bg-selected)" : "none",
-          border: "none",
-          borderLeft: "1px solid var(--border)",
-          color: popoverOpen ? "var(--text)" : "var(--text-muted)",
-          cursor: "pointer",
-          flexShrink: 0,
-          position: "relative",
-          transition: "color 0.12s, background 0.12s",
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.color = popoverOpen ? "var(--text)" : "var(--text-muted)"; }}
-      >
-        {/* Cloud icon */}
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
+    <>
+      <div style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+        <button
+          ref={buttonRef}
+          type="button"
+          onClick={togglePopover}
+          title={tooltipText}
+          aria-label="配置云端同步"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: iconButtonSize,
+            height: iconButtonSize,
+            padding: 0,
+            background: popoverOpen ? "var(--bg-selected)" : "none",
+            border: "none",
+            borderLeft: "1px solid var(--border)",
+            color: popoverOpen ? "var(--text)" : "var(--text-muted)",
+            cursor: "pointer",
+            flexShrink: 0,
+            position: "relative",
+            transition: "color 0.12s, background 0.12s",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = popoverOpen ? "var(--text)" : "var(--text-muted)"; }}
         >
-          <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
-        </svg>
+          {/* Cloud icon */}
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+          </svg>
 
-        {/* Status indicator dot */}
-        {status?.isGitRepo && (
-          <span
-            style={{
-              position: "absolute",
-              top: 7,
-              right: 7,
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              backgroundColor: badgeColor,
-              boxShadow: hasCloudUpdates ? "0 0 6px #38bdf8" : "none",
-              animation: hasCloudUpdates ? "pulse 1.8s infinite" : "none",
-            }}
-          />
-        )}
-      </button>
+          {/* Status indicator dot */}
+          {status?.isGitRepo && (
+            <span
+              style={{
+                position: "absolute",
+                top: 7,
+                right: 7,
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                backgroundColor: badgeColor,
+                boxShadow: hasCloudUpdates ? "0 0 6px #38bdf8" : "none",
+                animation: hasCloudUpdates ? "pulse 1.8s infinite" : "none",
+              }}
+            />
+          )}
+        </button>
+      </div>
 
-      {/* Popover Dropdown */}
-      {popoverOpen && (
+      {/* Popover Dropdown (Fixed positioned to prevent clipping by overflow boundaries) */}
+      {popoverOpen && dropdownPos && (
         <div
           ref={popoverRef}
           style={{
-            position: "absolute",
-            top: "calc(100% + 6px)",
-            right: 0,
-            width: 320,
+            position: "fixed",
+            top: dropdownPos.top,
+            left: dropdownPos.left,
+            width: dropdownPos.width,
             background: "var(--bg-panel)",
             border: "1px solid var(--border)",
             borderRadius: 8,
-            boxShadow: "0 10px 28px rgba(0,0,0,0.22)",
+            boxShadow: "0 12px 32px rgba(0,0,0,0.32)",
             padding: 12,
-            zIndex: 100,
+            zIndex: 1000,
             fontSize: 12,
             color: "var(--text)",
             userSelect: "none",
+            maxHeight: "calc(100dvh - 80px)",
+            overflowY: "auto",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, paddingBottom: 6, borderBottom: "1px solid var(--border)" }}>
@@ -327,6 +373,6 @@ export function CloudSyncButton({ iconButtonSize = 36 }: { iconButtonSize?: numb
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

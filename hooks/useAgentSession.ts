@@ -1743,32 +1743,62 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (!sid) return;
     const discussStatus = extensionStatuses.find((s) => s.key === "discuss-plan")?.text || "";
     const isCurrentlyPlan = discussStatus.includes("方案");
-    const shouldEnable = enable ?? !isCurrentlyPlan;
+    const shouldEnable = enable !== undefined ? enable : !isCurrentlyPlan;
+
+    // 1. Optimistic instant UI update
+    setExtensionStatuses((prev) => {
+      const rest = prev.filter((item) => item.key !== "discuss-plan");
+      return shouldEnable ? [...rest, { key: "discuss-plan", text: "📋 方案模式" }] : rest;
+    });
+
     try {
+      // 2. Dispatch prompt command to agent
       await sendAgentCommand(sid, {
         type: "prompt",
         message: shouldEnable ? "/plan start" : "/plan exit",
       });
+
+      // 3. Actively reconcile with authoritative agent state
+      const state = await sendAgentCommand<AgentStateResponse>(sid, { type: "get_state" });
+      if (state && Array.isArray(state.extensionStatuses)) {
+        setExtensionStatuses(state.extensionStatuses);
+      }
+      void loadTools(sid);
     } catch (e) {
       console.error("Failed to toggle plan mode:", e);
     }
-  }, [ensureNewSession, extensionStatuses]);
+  }, [ensureNewSession, extensionStatuses, loadTools]);
 
   const handleToggleEditMode = useCallback(async (enable?: boolean) => {
     const sid = sessionIdRef.current ?? await ensureNewSession();
     if (!sid) return;
     const discussStatus = extensionStatuses.find((s) => s.key === "discuss-plan")?.text || "";
     const isCurrentlyEdit = discussStatus.includes("修改模式") || discussStatus.includes("只改不跑");
-    const shouldEnable = enable ?? !isCurrentlyEdit;
+    const shouldEnable = enable !== undefined ? enable : !isCurrentlyEdit;
+
+    // 1. Optimistic instant UI update
+    setExtensionStatuses((prev) => {
+      const rest = prev.filter((item) => item.key !== "discuss-plan");
+      return shouldEnable ? [...rest, { key: "discuss-plan", text: "✏️ 修改模式·只改不跑" }] : rest;
+    });
+
     try {
+      // 2. Dispatch prompt command to agent
       await sendAgentCommand(sid, {
         type: "prompt",
         message: shouldEnable ? "/edit start" : "/edit exit",
       });
+
+      // 3. Actively reconcile with authoritative agent state
+      const state = await sendAgentCommand<AgentStateResponse>(sid, { type: "get_state" });
+      if (state && Array.isArray(state.extensionStatuses)) {
+        setExtensionStatuses(state.extensionStatuses);
+      }
+      void loadTools(sid);
     } catch (e) {
       console.error("Failed to toggle edit mode:", e);
     }
-  }, [ensureNewSession, extensionStatuses]);
+  }, [ensureNewSession, extensionStatuses, loadTools]);
 
   const scrollUserMsgToTop = useCallback(() => {
     const container = scrollContainerRef.current;

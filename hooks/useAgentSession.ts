@@ -1738,6 +1738,38 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, [setToolPresetState]);
 
+  const handleTogglePlanMode = useCallback(async (enable?: boolean) => {
+    const sid = sessionIdRef.current ?? await ensureNewSession();
+    if (!sid) return;
+    const discussStatus = extensionStatuses.find((s) => s.key === "discuss-plan")?.text || "";
+    const isCurrentlyPlan = discussStatus.includes("方案");
+    const shouldEnable = enable ?? !isCurrentlyPlan;
+    try {
+      await sendAgentCommand(sid, {
+        type: "prompt",
+        message: shouldEnable ? "/plan start" : "/plan exit",
+      });
+    } catch (e) {
+      console.error("Failed to toggle plan mode:", e);
+    }
+  }, [ensureNewSession, extensionStatuses]);
+
+  const handleToggleEditMode = useCallback(async (enable?: boolean) => {
+    const sid = sessionIdRef.current ?? await ensureNewSession();
+    if (!sid) return;
+    const discussStatus = extensionStatuses.find((s) => s.key === "discuss-plan")?.text || "";
+    const isCurrentlyEdit = discussStatus.includes("修改模式") || discussStatus.includes("只改不跑");
+    const shouldEnable = enable ?? !isCurrentlyEdit;
+    try {
+      await sendAgentCommand(sid, {
+        type: "prompt",
+        message: shouldEnable ? "/edit start" : "/edit exit",
+      });
+    } catch (e) {
+      console.error("Failed to toggle edit mode:", e);
+    }
+  }, [ensureNewSession, extensionStatuses]);
+
   const scrollUserMsgToTop = useCallback(() => {
     const container = scrollContainerRef.current;
     const el = lastUserMsgRef.current;
@@ -1939,7 +1971,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,
-    handleToolPresetChange, handleThinkingLevelChange, loadTools, loadSlashCommands, setActiveLeafId, setData, setMessages,
+    handleToolPresetChange, handleTogglePlanMode, handleToggleEditMode, handleThinkingLevelChange, loadTools, loadSlashCommands, setActiveLeafId, setData, setMessages,
     scrollToBottom, scrollUserMsgToTop,
     dispatch, setAgentRunning, setForkingEntryId,
     bashRunning, pendingBash,

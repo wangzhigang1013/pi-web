@@ -63,6 +63,8 @@ interface Props {
   compactResult?: CompactResultInfo | null;
   toolPreset?: ToolPreset;
   onToolPresetChange?: (preset: ToolPreset) => void;
+  onTogglePlanMode?: (enable?: boolean) => void;
+  onToggleEditMode?: (enable?: boolean) => void;
   thinkingLevel?: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   onThinkingLevelChange?: (level: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") => void;
   availableThinkingLevels?: string[] | null;
@@ -386,6 +388,7 @@ export function ModelScopeWarningBanner({ warnings }: { warnings?: string[] }) {
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
   onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
+  onTogglePlanMode, onToggleEditMode,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
   retryInfo, queuedMessages, inputHistory = [], onRecallQueue,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
@@ -399,23 +402,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const [value, setValue] = useState(() => (draftKey ? getDraft(draftKey)?.value ?? "" : ""));
-  const [isPlanActive, setIsPlanActive] = useState(false);
-  const [isEditActive, setIsEditActive] = useState(false);
 
-  // Sync mode state from extensionStatuses
-  useEffect(() => {
-    const discussStatus = extensionStatuses?.find((s) => s.key === "discuss-plan")?.text || "";
-    if (discussStatus.includes("方案")) {
-      setIsPlanActive(true);
-      setIsEditActive(false);
-    } else if (discussStatus.includes("修改模式") || discussStatus.includes("只改不跑")) {
-      setIsEditActive(true);
-      setIsPlanActive(false);
-    } else {
-      setIsPlanActive(false);
-      setIsEditActive(false);
-    }
-  }, [extensionStatuses]);
+  // Real extension status mapping from discuss-plan extension
+  const discussStatus = extensionStatuses?.find((s) => s.key === "discuss-plan")?.text || "";
+  const isPlanActive = Boolean(discussStatus && discussStatus.includes("方案"));
+  const isEditActive = Boolean(discussStatus && (discussStatus.includes("修改模式") || discussStatus.includes("只改不跑")));
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [modelDropdownRect, setModelDropdownRect] = useState<{ top: number; left: number; width: number } | null>(null);
   const [modelFilter, setModelFilter] = useState("");
@@ -782,16 +773,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       }
     }
     clearInput();
-
-    let textToSend = msg;
-    if (isPlanActive && !msg.startsWith("/")) {
-      textToSend = `[方案规划模式·只读探索]\n【模式规则】：请仅进行只读探索（read/grep/find/ls 等），严禁修改任何业务代码文件，严禁执行 python/node/npm 等运行类命令。请先调查并给出详细的方案与步骤供审阅。\n\n${msg}`;
-    } else if (isEditActive && !msg.startsWith("/")) {
-      textToSend = `[修改模式·只改不跑]\n【模式规则】：允许查看和直接修改代码文件（read/edit/write），但严禁执行任何 python/node/npm/curl 等测试、脚本或终端执行命令（只改不跑）。修改完成后精准说明改动。\n\n${msg}`;
-    }
-
-    onSend(textToSend, attachedImages.length ? attachedImages : undefined);
-  }, [value, attachedImages, isStreaming, onBuiltinCommand, onSend, clearInput, onAudioUnlock, isPlanActive, isEditActive]);
+    onSend(msg, attachedImages.length ? attachedImages : undefined);
+  }, [value, attachedImages, isStreaming, onBuiltinCommand, onSend, clearInput, onAudioUnlock]);
 
   const slashQuery = value.startsWith("/") && !/\s/.test(value.slice(1))
     ? value.slice(1).toLowerCase()
@@ -2257,17 +2240,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               {/* Plan Mode Toggle */}
               <button
                 type="button"
-                onClick={() => {
-                  setIsPlanActive((prev) => {
-                    const next = !prev;
-                    if (next) setIsEditActive(false);
-                    return next;
-                  });
-                }}
+                onClick={() => onTogglePlanMode?.(!isPlanActive)}
                 title={
                   isPlanActive
-                    ? "方案模式（已开启）：点击关闭"
-                    : "开启方案模式：只读探索 + 方案讨论，不擅自改动代码或执行脚本"
+                    ? "方案模式（已开启）：点击退出"
+                    : "开启方案模式 (/plan)：只读探索 + 编写方案并存入 .plans/，不擅自改动代码或执行脚本"
                 }
                 aria-label="方案模式"
                 aria-pressed={isPlanActive}
@@ -2309,17 +2286,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               {/* Edit Mode Toggle */}
               <button
                 type="button"
-                onClick={() => {
-                  setIsEditActive((prev) => {
-                    const next = !prev;
-                    if (next) setIsPlanActive(false);
-                    return next;
-                  });
-                }}
+                onClick={() => onToggleEditMode?.(!isEditActive)}
                 title={
                   isEditActive
-                    ? "修改模式（已开启）：点击关闭"
-                    : "开启修改模式：只改代码不执行任何命令（只改不跑）"
+                    ? "修改模式（已开启）：点击退出"
+                    : "开启修改模式 (/edit)：可读写文件但完全拦截命令执行（只改不跑）"
                 }
                 aria-label="修改模式"
                 aria-pressed={isEditActive}

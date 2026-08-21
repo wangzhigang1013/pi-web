@@ -403,10 +403,27 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const isMobile = useIsMobile();
   const [value, setValue] = useState(() => (draftKey ? getDraft(draftKey)?.value ?? "" : ""));
 
-  // Real extension status mapping from discuss-plan extension
-  const discussStatus = extensionStatuses?.find((s) => s.key === "discuss-plan")?.text || "";
-  const isPlanActive = Boolean(discussStatus && discussStatus.includes("方案"));
-  const isEditActive = Boolean(discussStatus && (discussStatus.includes("修改模式") || discussStatus.includes("只改不跑")));
+  // Instant local mode state + sync from extensionStatuses
+  const [activeMode, setActiveMode] = useState<"plan" | "edit" | "off">(() => {
+    const discussStatus = extensionStatuses?.find((s) => s.key === "discuss-plan")?.text || "";
+    if (discussStatus.includes("方案")) return "plan";
+    if (discussStatus.includes("修改模式") || discussStatus.includes("只改不跑")) return "edit";
+    return "off";
+  });
+
+  useEffect(() => {
+    const discussStatus = extensionStatuses?.find((s) => s.key === "discuss-plan")?.text || "";
+    if (discussStatus.includes("方案")) {
+      setActiveMode("plan");
+    } else if (discussStatus.includes("修改模式") || discussStatus.includes("只改不跑")) {
+      setActiveMode("edit");
+    } else {
+      setActiveMode("off");
+    }
+  }, [extensionStatuses]);
+
+  const isPlanActive = activeMode === "plan";
+  const isEditActive = activeMode === "edit";
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [modelDropdownRect, setModelDropdownRect] = useState<{ top: number; left: number; width: number } | null>(null);
   const [modelFilter, setModelFilter] = useState("");
@@ -2240,7 +2257,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               {/* Plan Mode Toggle */}
               <button
                 type="button"
-                onClick={() => onTogglePlanMode?.(!isPlanActive)}
+                onClick={() => {
+                  const nextPlan = activeMode !== "plan";
+                  setActiveMode(nextPlan ? "plan" : "off");
+                  onTogglePlanMode?.(nextPlan);
+                }}
                 title={
                   isPlanActive
                     ? "方案模式（已开启）：点击退出"
@@ -2286,7 +2307,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               {/* Edit Mode Toggle */}
               <button
                 type="button"
-                onClick={() => onToggleEditMode?.(!isEditActive)}
+                onClick={() => {
+                  const nextEdit = activeMode !== "edit";
+                  setActiveMode(nextEdit ? "edit" : "off");
+                  onToggleEditMode?.(nextEdit);
+                }}
                 title={
                   isEditActive
                     ? "修改模式（已开启）：点击退出"

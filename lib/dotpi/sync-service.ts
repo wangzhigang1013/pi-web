@@ -66,9 +66,9 @@ async function checkSingleRepo(id: "dot-pi" | "pi-web", name: string, dir: strin
     });
     const dirtyFiles = statusOut
       .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .map((l) => l.slice(3));
+      .filter((l) => Boolean(l.trim()))
+      .map((l) => l.replace(/^..\s+/, "").trim())
+      .filter(Boolean);
     const isDirty = dirtyFiles.length > 0;
 
     // 3. Check ahead / behind count against origin/main
@@ -182,12 +182,26 @@ export async function performRepoSync(
     }
 
     if (mode === "push" || (mode === "auto" && (status.isDirty || status.ahead > 0))) {
-      if (status.isDirty) {
-        await execAsync(`git add . && git commit -m "sync: update ${repoName} from cloud sync button"`, {
+      // 1. Stage all changes with autocrlf ignored to avoid noisy CRLF warnings on Windows
+      await execAsync("git -c core.autocrlf=false add -A", { cwd: dir, timeout: 10000 });
+
+      // 2. Check if there are staged changes to commit
+      let hasStaged = false;
+      try {
+        await execAsync("git diff --cached --quiet", { cwd: dir, timeout: 5000 });
+      } catch {
+        // Exit code non-zero means there are staged differences
+        hasStaged = true;
+      }
+
+      if (hasStaged) {
+        await execAsync(`git commit -m "sync: update ${repoName} from cloud sync button"`, {
           cwd: dir,
           timeout: 10000,
         });
       }
+
+      // 3. Push to origin main
       await execAsync("git push origin main", { cwd: dir, timeout: 20000 });
       results.push({ repo: repoName, action: "pushed", message: "已推送到 GitHub 远端" });
       return;

@@ -1149,3 +1149,340 @@
     }
   }
 }
+
+/* Usage statistics section. */
+.settings-usage {
+  width: 100%;
+  max-width: 860px;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 26px clamp(18px, 4vw, 40px) 40px;
+  overflow-y: auto;
+}
+
+.settings-usage-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-usage-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.settings-usage-description {
+  margin: 5px 0 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.settings-usage-refresh {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.settings-usage-refresh:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.settings-usage-refresh:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.settings-usage-error {
+  margin: 14px 0 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(220, 38, 38, 0.08);
+  color: #dc2626;
+  font-size: 12px;
+}
+
+.settings-usage-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.settings-usage-card {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.settings-usage-card-label {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.settings-usage-card-value {
+  margin-top: 3px;
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-usage-card-sub {
+  margin-top: 2px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.settings-usage-section {
+  margin-top: 30px;
+}
+
+.settings-usage-heading {
+  margin: 0 0 4px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.settings-usage-section-description {
+  margin: 0 0 12px;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.settings-usage-heatmap {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 18px 2px 4px;
+}
+
+.settings-usage-heatmap-days {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 2px;
+  margin-top: 15px;
+  background: var(--bg);
+  padding-right: 3px;
+}
+
+.settings-usage-heatmap-day {
+  height: 12px;
+  color: var(--text-dim);
+  font-size: 9.5px;
+  line-height: 12px;
+}
+
+.settings-usage-heatmap-weeks {
+  display: flex;
+  gap: 2px;
+}
+
+.settings-usage-heatmap-week {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.settings-usage-heatmap-month {
+  position: absolute;
+  top: -15px;
+  left: 0;
+  color: var(--text-dim);
+  font-size: 9.5px;
+  line-height: 12px;
+  white-space: nowrap;
+}
+
+.settings-usage-heat {
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: var(--bg-hover);
+  cursor: pointer;
+}
+
+.settings-usage-heat[data-level="1"] { background: color-mix(in srgb, var(--accent) 28%, var(--bg)); }
+.settings-usage-heat[data-level="2"] { background: color-mix(in srgb, var(--accent) 55%, var(--bg)); }
+.settings-usage-heat[data-level="3"] { background: color-mix(in srgb, var(--accent) 80%, var(--bg)); }
+.settings-usage-heat[data-level="4"] { background: var(--accent); }
+
+.settings-usage-heat:hover {
+  outline: 1px solid var(--text);
+}
+
+.settings-usage-heat[data-selected] {
+  outline: 1.5px solid var(--text);
+}
+
+.settings-usage-heat.is-static {
+  cursor: default;
+}
+
+.settings-usage-heat.is-static:hover {
+  outline: none;
+}
+
+.settings-usage-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.settings-usage-legend .settings-usage-heat {
+  width: 11px;
+  height: 11px;
+}
+
+.settings-usage-day-detail {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.settings-usage-day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.settings-usage-day-close {
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.settings-usage-day-close:hover {
+  color: var(--text);
+}
+
+.settings-usage-day-summary {
+  margin: 6px 0 0;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.settings-usage-table {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+
+.settings-usage-table th {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-dim);
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.settings-usage-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.settings-usage-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.settings-usage-table .is-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-usage-months {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.settings-usage-month-row {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-usage-month-name {
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.settings-usage-month-track {
+  height: 14px;
+  border-radius: 4px;
+  background: var(--bg-hover);
+  overflow: hidden;
+}
+
+.settings-usage-month-bar {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  border-radius: 4px;
+  background: var(--accent);
+}
+
+.settings-usage-month-value {
+  color: var(--text);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.settings-usage-footnote {
+  margin: 10px 0 0;
+  color: var(--text-dim);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.settings-usage-empty {
+  margin-top: 24px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .settings-usage-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-usage-month-row {
+    grid-template-columns: 68px minmax(0, 1fr) auto;
+  }
+}

@@ -204,6 +204,7 @@ export const zhTWLocale: LocalePlugin = {
     "sidebar.treeView": "工作區樹狀檢視",
     "sidebar.focusedView": "單專案聚焦檢視",
     "sidebar.addWorkspace": "新增工作區資料夾…",
+    "sidebar.openProject": "開啟專案",
     "sidebar.newCustomFolder": "新建自訂分組資料夾…",
     "sidebar.searchPlaceholder": "搜尋對話與工作區…",
     "sidebar.currentWorkspace": "目前工作區",

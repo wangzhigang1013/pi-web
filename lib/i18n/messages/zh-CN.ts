@@ -204,6 +204,7 @@ export const zhCNLocale: LocalePlugin = {
     "sidebar.treeView": "工作区树状视图",
     "sidebar.focusedView": "单项目聚焦视图",
     "sidebar.addWorkspace": "添加工作区文件夹…",
+    "sidebar.openProject": "打开项目",
     "sidebar.newCustomFolder": "新建分组文件夹…",
     "sidebar.searchPlaceholder": "搜索会话与工作区…",
     "sidebar.currentWorkspace": "当前工作区",

@@ -204,6 +204,7 @@ export const enLocale: LocalePlugin = {
     "sidebar.treeView": "Workspace tree view",
     "sidebar.focusedView": "Focused project view",
     "sidebar.addWorkspace": "Add workspace folder…",
+    "sidebar.openProject": "Open Project",
     "sidebar.newCustomFolder": "New custom folder…",
     "sidebar.searchPlaceholder": "Search sessions & workspaces…",
     "sidebar.currentWorkspace": "Current workspace",

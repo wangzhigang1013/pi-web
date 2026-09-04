@@ -450,15 +450,8 @@ export function buildSessionContext(
   // Restrict SDK conversion and the response payload to the requested page.
   const sliced = tail && tail > 0 ? sliceActiveBranch(entries, leafId ?? null, tail, excludeLeaf) : entries;
   const hasMore = Boolean(tail && tail > 0 && sliced[0]?.parentId);
-  const byId = new Map<string, SessionEntry>();
-  for (const e of sliced) byId.set(e.id, e);
 
-  const piEntries = sliced as unknown as PiSessionEntry[];
-  const contextEntries = piBuildContextEntries(
-    piEntries,
-    leafId,
-    byId as unknown as Map<string, PiSessionEntry>,
-  );
+  const contextEntries = resolveSliceContextEntries(sliced, leafId, entries);
 
   // Convert the SDK-selected context entries and their IDs together. This keeps
   // fork/navigation targets aligned while preserving pi's compaction ordering.
@@ -480,6 +473,74 @@ export function buildSessionContext(
     hasMore,
     ...getSessionSettings(entries, leafId),
   };
+}
+
+/**
+ * Resolve context entries for a sliced branch window.
+ *
+ * Pi's SDK `buildContextEntries` searches for `compaction.firstKeptEntryId` within
+ * the passed entries. When a branch is sliced to a tail window, `firstKeptEntryId`
+ * may lie further back in the ancestor chain (outside `sliced`). If that happens,
+ * the SDK cannot find `firstKeptEntryId` in the slice and erroneously drops all
+ * entries before the compaction entry — discarding the user's completed turn.
+ * When `firstKeptEntryId` is an ancestor preceding `sliced[0]`, all pre-compaction
+ * entries in `sliced` are known to be kept and are preserved.
+ */
+function resolveSliceContextEntries(
+  sliced: SessionEntry[],
+  leafId: string | null | undefined,
+  allEntries: SessionEntry[],
+): SessionEntry[] {
+  const byId = new Map<string, SessionEntry>();
+  for (const e of sliced) byId.set(e.id, e);
+
+  let compaction: (SessionEntry & { firstKeptEntryId?: string }) | undefined;
+  for (let i = sliced.length - 1; i >= 0; i--) {
+    if (sliced[i].type === "compaction") {
+      compaction = sliced[i] as SessionEntry & { firstKeptEntryId?: string };
+      break;
+    }
+  }
+
+  if (!compaction || !compaction.firstKeptEntryId || sliced.some((e) => e.id === compaction!.firstKeptEntryId)) {
+    const piEntries = sliced as unknown as PiSessionEntry[];
+    return piBuildContextEntries(
+      piEntries,
+      leafId,
+      byId as unknown as Map<string, PiSessionEntry>,
+    ) as unknown as SessionEntry[];
+  }
+
+  const allById = new Map<string, SessionEntry>();
+  for (const e of allEntries) allById.set(e.id, e);
+
+  let isAncestor = false;
+  let cur: SessionEntry | undefined = sliced[0]?.parentId ? allById.get(sliced[0].parentId) : undefined;
+  while (cur) {
+    if (cur.id === compaction.firstKeptEntryId) {
+      isAncestor = true;
+      break;
+    }
+    cur = cur.parentId ? allById.get(cur.parentId) : undefined;
+  }
+
+  if (isAncestor) {
+    const compactionIdx = sliced.findIndex((e) => e.id === compaction!.id);
+    if (compactionIdx >= 0) {
+      return [
+        compaction,
+        ...sliced.slice(0, compactionIdx),
+        ...sliced.slice(compactionIdx + 1),
+      ];
+    }
+  }
+
+  const piEntries = sliced as unknown as PiSessionEntry[];
+  return piBuildContextEntries(
+    piEntries,
+    leafId,
+    byId as unknown as Map<string, PiSessionEntry>,
+  ) as unknown as SessionEntry[];
 }
 
 /**

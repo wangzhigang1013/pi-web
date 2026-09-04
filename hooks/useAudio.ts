@@ -14,7 +14,7 @@ function playTone(ctx: AudioContext) {
     osc.frequency.value = freq;
     const t = now + i * 0.18;
     gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(0.18, t + 0.02);
+    gain.gain.linearRampToValueAtTime(0.2, t + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
     osc.start(t);
     osc.stop(t + 0.45);
@@ -31,26 +31,85 @@ export function useAudio() {
   const enabledRef = useRef(enabled);
   useEffect(() => { enabledRef.current = enabled; }, [enabled]);
 
-  // Reuse a single AudioContext so it can be resumed if the browser
-  // autoplay policy suspends it (contexts created outside user gestures
-  // start in "suspended" state and produce no sound).
   const ctxRef = useRef<AudioContext | null>(null);
+  const keepAliveOscRef = useRef<AudioNode | null>(null);
+  const htmlAudioRef = useRef<HTMLAudioElement | null>(null);
+
   const getCtx = useCallback((): AudioContext | null => {
     if (ctxRef.current && ctxRef.current.state !== "closed") return ctxRef.current;
     try {
-      ctxRef.current = new AudioContext();
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return null;
+      ctxRef.current = new AudioCtx();
     } catch {
       return null;
     }
     return ctxRef.current;
   }, []);
 
+  // Pre-warm the HTML5 audio element
+  const getHtmlAudio = useCallback((): HTMLAudioElement | null => {
+    if (typeof window === "undefined" || typeof Audio === "undefined") return null;
+    if (!htmlAudioRef.current) {
+      try {
+        htmlAudioRef.current = new Audio("/chime.wav");
+        htmlAudioRef.current.preload = "auto";
+      } catch {
+        return null;
+      }
+    }
+    return htmlAudioRef.current;
+  }, []);
+
+  // Connect a silent node so Chrome's audio engine thread will NOT auto-suspend
+  // the AudioContext after 20-30s of silence during long background runs.
+  const ensureKeepAlive = useCallback((ctx: AudioContext) => {
+    if (keepAliveOscRef.current || ctx.state === "closed") return;
+    try {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      gain.gain.value = 0; // completely silent
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      keepAliveOscRef.current = osc;
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const unlockAudio = useCallback((force = false) => {
     if (!force && !enabledRef.current) return;
     const ctx = getCtx();
-    if (!ctx || ctx.state !== "suspended") return;
-    ctx.resume().catch(() => {});
-  }, [getCtx]);
+    if (ctx) {
+      if (ctx.state === "suspended") {
+        ctx.resume().then(() => ensureKeepAlive(ctx)).catch(() => {});
+      } else {
+        ensureKeepAlive(ctx);
+      }
+    }
+    const audio = getHtmlAudio();
+    if (audio) {
+      try {
+        audio.load();
+      } catch {
+        // ignore
+      }
+    }
+  }, [getCtx, ensureKeepAlive, getHtmlAudio]);
+
+  // Unlock audio automatically on the user's first click or keypress anywhere on the page
+  useEffect(() => {
+    const handleUserGesture = () => {
+      unlockAudio(false);
+    };
+    window.addEventListener("pointerdown", handleUserGesture, { passive: true });
+    window.addEventListener("keydown", handleUserGesture, { passive: true });
+    return () => {
+      window.removeEventListener("pointerdown", handleUserGesture);
+      window.removeEventListener("keydown", handleUserGesture);
+    };
+  }, [unlockAudio]);
 
   const toggle = useCallback(() => {
     const next = !enabledRef.current;
@@ -62,21 +121,50 @@ export function useAudio() {
 
   const playDone = useCallback(() => {
     if (!enabledRef.current) return;
+
+    let playedViaWebAudio = false;
     const ctx = getCtx();
-    if (!ctx) return;
-    const play = () => {
+
+    if (ctx && ctx.state === "running") {
       try {
         playTone(ctx);
+        playedViaWebAudio = true;
       } catch {
-        // AudioContext not available
+        // ignore
       }
-    };
-    if (ctx.state === "suspended") {
-      ctx.resume().then(play).catch(() => {});
-      return;
     }
-    play();
-  }, [getCtx]);
 
-  return { soundEnabled: enabled, onSoundToggle: toggle, playDoneSound: playDone, unlockAudio, soundEnabledRef: enabledRef };
+    // Dual-channel reliability:
+    // If WebAudio was suspended by Chrome in the background or failed, immediately play via HTML5 Audio element!
+    // HTML5 Audio is not subject to WebAudio suspension and plays reliably in background tabs.
+    if (!playedViaWebAudio || (ctx && ctx.state === "suspended")) {
+      const audio = getHtmlAudio();
+      if (audio) {
+        try {
+          audio.currentTime = 0;
+          audio.play().catch(() => {});
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    // If ctx was suspended, also resume it so subsequent tones stay active
+    if (ctx && ctx.state === "suspended") {
+      ctx.resume().then(() => {
+        ensureKeepAlive(ctx);
+        if (!playedViaWebAudio) {
+          try { playTone(ctx); } catch {}
+        }
+      }).catch(() => {});
+    }
+  }, [getCtx, getHtmlAudio, ensureKeepAlive]);
+
+  return {
+    soundEnabled: enabled,
+    onSoundToggle: toggle,
+    playDoneSound: playDone,
+    unlockAudio,
+    soundEnabledRef: enabledRef,
+  };
 }

@@ -20,6 +20,7 @@ export interface BrowserNotificationOptions {
   sessionUrl: string;
   onClick: () => void;
   tag?: string;
+  icon?: string;
 }
 
 export type NotificationDelivery = "service-worker" | "window" | null;
@@ -66,6 +67,17 @@ function getBrowserEnvironment(): BrowserNotificationEnvironment {
   };
 }
 
+export async function requestBrowserNotificationPermission(): Promise<NotificationPermission> {
+  if (typeof window === "undefined" || !("Notification" in window)) {
+    return "denied";
+  }
+  try {
+    return await Notification.requestPermission();
+  } catch {
+    return Notification.permission;
+  }
+}
+
 export async function showBrowserNotification(
   options: BrowserNotificationOptions,
   environment: BrowserNotificationEnvironment = getBrowserEnvironment(),
@@ -73,6 +85,7 @@ export async function showBrowserNotification(
   const notificationOptions: NotificationOptions = {
     body: options.body,
     ...(options.tag ? { tag: options.tag } : {}),
+    ...(options.icon ? { icon: options.icon } : {}),
   };
 
   if (environment.getServiceWorkerRegistration) {

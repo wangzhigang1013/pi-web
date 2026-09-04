@@ -94,9 +94,6 @@ export function AppShell() {
   // is not mounted. ChatWindow receives the audio callbacks as props.
   const { soundEnabled, onSoundToggle, playDoneSound, unlockAudio, soundEnabledRef } = useAudio();
   const notifiedAttentionRequestIdsRef = useRef(new Set<string>());
-  const handleBackgroundTaskDone = useCallback(() => {
-    if (soundEnabledRef.current) playDoneSound();
-  }, [playDoneSound, soundEnabledRef]);
   const [selectedSession, setSelectedSession] = useState<SessionInfo | null>(null);
   const [sessionCatalog, setSessionCatalog] = useState<SessionInfo[]>([]);
   const handleSessionsChange = useCallback((sessions: SessionInfo[]) => {
@@ -769,6 +766,7 @@ export function AppShell() {
         body,
         sessionUrl,
         tag,
+        icon: "/icons/icon-192.png",
         onClick: () => {
           window.focus();
           if (targetSession) handleSelectSession(targetSession);
@@ -804,6 +802,17 @@ export function AppShell() {
       tag: targetSession ? `pi-session-complete:${targetSession.id}` : "pi-session-complete",
     });
   }, [deliverSessionNotification, hydrateSelectedSession, selectedSession, translate]);
+
+  const handleBackgroundTaskDone = useCallback(() => {
+    if (soundEnabledRef.current) playDoneSound();
+    if (!shouldShowBrowserNotification()) return;
+    deliverSessionNotification({
+      targetSession: selectedSession,
+      title: selectedSession?.name ?? translate("i18n.sessionComplete"),
+      body: translate("i18n.taskFinished"),
+      tag: selectedSession ? `pi-session-complete:${selectedSession.id}` : "pi-session-complete",
+    });
+  }, [deliverSessionNotification, playDoneSound, selectedSession, soundEnabledRef, translate]);
 
   const handleAttentionNeeded = useCallback((request: BlockingExtensionUiRequest) => {
     if (selectedSession?.relation?.kind === "subagent") return;

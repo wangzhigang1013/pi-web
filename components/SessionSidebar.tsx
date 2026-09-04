@@ -1214,7 +1214,13 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           )}
         </div>
 
-        {/* Worktree switcher — shown for git projects at checkout top level */}
+        {/* Worktree switcher — shown only for git projects at a checkout top
+            level (repo subdirs keep their own project identity, so switching
+            from them would jump projects). Rendered whenever the selected cwd
+            belongs to the loaded project (not just when forCwd matches), so
+            switching between worktrees of one project keeps the row mounted
+            instead of flickering while data refetches: all worktrees of a
+            project share the same list anyway. */}
         {showWorktreeSwitcher && (() => {
           if (!worktreeState) return null;
           const showWtFilter = worktreeState.worktrees.length >= 8;
@@ -1226,7 +1232,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             <div ref={wtDropdownRef} style={{ position: "relative", marginTop: 6 }}>
               <button
                 onClick={() => setWtDropdownOpen((v) => !v)}
-                title={currentWorktree ? t("sidebar.switchWorktreeTitle", { path: currentWorktree.path }) : t("sidebar.switchWorktree")}
+                 title={currentWorktree ? t("sidebar.switchWorktreeTitle", { path: currentWorktree.path }) : t("sidebar.switchWorktree")}
                 style={{
                   width: "100%",
                   height: 29,
@@ -1380,7 +1386,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                             <button
                               onClick={() => void handleRemoveWorktree(wt.path, false)}
                               disabled={wtBusy}
-                              title={t("sidebar.removeWorktreeTitle", { path: wt.path })}
+                               title={t("sidebar.removeWorktreeTitle", { path: wt.path })}
                               style={{
                                 display: "flex", alignItems: "center", justifyContent: "center",
                                 width: 34, height: 28, padding: 0, marginRight: 4,
@@ -1432,16 +1438,13 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                       }}
                     >
                       <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" style={{ flexShrink: 0 }}>
-                        <line x1="5" y1="2" x2="5" y2="8" />
-                        <line x1="2" y1="5" x2="8" y2="5" />
+                        <line x1="5" y1="1" x2="5" y2="9" />
+                        <line x1="1" y1="5" x2="9" y2="5" />
                       </svg>
-                      <span>{t("sidebar.createWorktree")}</span>
+                       <span>{t("sidebar.newWorktree")}</span>
                     </button>
                   ) : (
-                    <div style={{ padding: "8px 10px", borderTop: "1px solid var(--border)" }} onClick={(e) => e.stopPropagation()}>
-                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 5 }}>
-                        {t("sidebar.newWorktreeBranch")}
-                      </div>
+                    <div style={{ padding: "6px 8px" }}>
                       <input
                         ref={wtNewInputRef}
                         value={wtNewBranch}
@@ -1460,7 +1463,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                             setWtError(null);
                           }
                         }}
-                        placeholder={t("sidebar.branchName")}
+                         placeholder={t("sidebar.branchName")}
                         style={{
                           width: "100%",
                           fontSize: 11,
@@ -1491,7 +1494,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                             opacity: wtBusy || !wtNewBranch.trim() ? 0.65 : 1,
                           }}
                         >
-                          {wtBusy ? t("sidebar.creating") : t("sidebar.create")}
+                           {wtBusy ? t("sidebar.creating") : t("sidebar.create")}
                         </button>
                         <button
                           onClick={() => { setWtNewOpen(false); setWtNewBranch(""); setWtError(null); }}
@@ -1506,7 +1509,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                             cursor: "pointer",
                           }}
                         >
-                          {t("sidebar.cancel")}
+                           {t("sidebar.cancel")}
                         </button>
                       </div>
                     </div>

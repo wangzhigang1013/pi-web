@@ -767,6 +767,7 @@ export function AppShell() {
         sessionUrl,
         tag,
         icon: "/icons/icon-192.png",
+        silent: true,
         onClick: () => {
           window.focus();
           if (targetSession) handleSelectSession(targetSession);

@@ -480,38 +480,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [toolDropdownOpen, setToolDropdownOpen] = useState(false);
   const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false);
   const [controlsMenuOpen, setControlsMenuOpen] = useState(false);
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | null>(() => {
-    if (typeof window === "undefined" || !("Notification" in window)) return null;
-    return Notification.permission;
-  });
-
-  const handleNotificationClick = useCallback(async () => {
-    if (typeof window === "undefined" || !("Notification" in window)) return;
-    if (Notification.permission === "granted") {
-      try {
-        new Notification(t("chat.notificationTestTitle"), {
-          body: t("chat.notificationTestBody"),
-          icon: "/icons/icon-192.png",
-        });
-      } catch {
-        // ignore
-      }
-      return;
+  const handleSoundToggleClick = useCallback(() => {
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+      void requestBrowserNotificationPermission().catch(() => {});
     }
-
-    try {
-      const p = await requestBrowserNotificationPermission();
-      setNotificationPermission(p);
-      if (p === "granted") {
-        new Notification(t("chat.notificationTestTitle"), {
-          body: t("chat.notificationTestBody"),
-          icon: "/icons/icon-192.png",
-        });
-      }
-    } catch {
-      // ignore
-    }
-  }, [t]);
+    onSoundToggle?.();
+  }, [onSoundToggle]);
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>(() => (
     draftKey ? draftImagesToAttachedImages(getDraft(draftKey)?.images) : []
   ));
@@ -860,7 +834,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     if (!msg && !attachedImages.length) return;
     onAudioUnlock?.();
     if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
-      void requestBrowserNotificationPermission().then((p) => setNotificationPermission(p));
+      void requestBrowserNotificationPermission().catch(() => {});
     }
     const builtinAllowed = !isStreaming || canRunBuiltinSlashCommandWhileStreaming(msg);
     if (builtinAllowed && await runBuiltinCommand(msg)) return;
@@ -2595,7 +2569,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
             {onSoundToggle !== undefined && (
               <button
-                onClick={onSoundToggle}
+                onClick={handleSoundToggleClick}
                  title={soundEnabled ? t("chat.disableSound") : t("chat.enableSound")}
                  aria-label={soundEnabled ? t("chat.disableSound") : t("chat.enableSound")}
                 style={{
@@ -2634,57 +2608,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     <line x1="23" y1="9" x2="17" y2="15" />
                     <line x1="17" y1="9" x2="23" y2="15" />
                   </svg>
-                )}
-              </button>
-            )}
-
-            {notificationPermission !== null && (
-              <button
-                type="button"
-                onClick={handleNotificationClick}
-                title={
-                  notificationPermission === "granted"
-                    ? t("chat.disableNotifications")
-                    : notificationPermission === "denied"
-                    ? t("chat.notificationsBlocked")
-                    : t("chat.enableNotifications")
-                }
-                aria-label={
-                  notificationPermission === "granted"
-                    ? t("chat.disableNotifications")
-                    : t("chat.enableNotifications")
-                }
-                style={{
-                  position: "relative",
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                  width: 32,
-                  height: 32,
-                  padding: 0,
-                  background: "none",
-                  border: "none",
-                  borderRadius: 9,
-                  color: notificationPermission === "granted" ? "var(--text-muted)" : "var(--text-dim)",
-                  cursor: "pointer",
-                  opacity: notificationPermission === "granted" ? 1 : 0.55,
-                  transition: "background 0.12s, color 0.12s, opacity 0.12s",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "var(--bg-hover)";
-                  e.currentTarget.style.color = "var(--text)";
-                  e.currentTarget.style.opacity = "1";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "none";
-                  e.currentTarget.style.color = notificationPermission === "granted" ? "var(--text-muted)" : "var(--text-dim)";
-                  e.currentTarget.style.opacity = notificationPermission === "granted" ? "1" : "0.55";
-                }}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                </svg>
-                {notificationPermission === "default" && (
-                  <span style={{ position: "absolute", top: 7, right: 7, width: 5, height: 5, borderRadius: "50%", background: "var(--accent)" }} />
                 )}
               </button>
             )}

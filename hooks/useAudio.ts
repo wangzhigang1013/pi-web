@@ -122,40 +122,37 @@ export function useAudio() {
   const playDone = useCallback(() => {
     if (!enabledRef.current) return;
 
-    let playedViaWebAudio = false;
+    let played = false;
     const ctx = getCtx();
 
     if (ctx && ctx.state === "running") {
       try {
         playTone(ctx);
-        playedViaWebAudio = true;
+        played = true;
       } catch {
         // ignore
       }
     }
 
-    // Dual-channel reliability:
-    // If WebAudio was suspended by Chrome in the background or failed, immediately play via HTML5 Audio element!
-    // HTML5 Audio is not subject to WebAudio suspension and plays reliably in background tabs.
-    if (!playedViaWebAudio || (ctx && ctx.state === "suspended")) {
+    // If WebAudio was not running or failed, immediately play via HTML5 Audio element fallback!
+    // Ensures audio plays instantaneously even when browser suspended WebAudio in the background.
+    if (!played) {
       const audio = getHtmlAudio();
       if (audio) {
         try {
           audio.currentTime = 0;
           audio.play().catch(() => {});
+          played = true;
         } catch {
           // ignore
         }
       }
     }
 
-    // If ctx was suspended, also resume it so subsequent tones stay active
+    // Resume ctx for future calls, but DO NOT replay the sound so it never sounds twice
     if (ctx && ctx.state === "suspended") {
       ctx.resume().then(() => {
         ensureKeepAlive(ctx);
-        if (!playedViaWebAudio) {
-          try { playTone(ctx); } catch {}
-        }
       }).catch(() => {});
     }
   }, [getCtx, getHtmlAudio, ensureKeepAlive]);

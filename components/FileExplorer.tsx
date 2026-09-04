@@ -11,7 +11,7 @@ import {
   normalizeFilePathSlashes,
 } from "@/lib/file-paths";
 import type { GitFileStatus, GitFileStatusKind, GitStatusResponse } from "@/lib/git-types";
-import type { FileIndexEntry } from "@/lib/file-fuzzy";
+import { type FileIndexEntry, buildAtMentionText } from "@/lib/file-fuzzy";
 import { buildSearchTree, type SearchTreeNode } from "@/lib/search-tree";
 import { useI18n } from "@/hooks/useI18n";
 type Translate = ReturnType<typeof useI18n>["t"];
@@ -287,6 +287,20 @@ function TreeNode({
   return (
     <div>
       <div
+        draggable={true}
+        onDragStart={(e) => {
+          const relPath = getRelativeFilePath(node.fullPath, cwd);
+          const payload = {
+            type: "pi-web-path",
+            path: relPath,
+            fullPath: node.fullPath,
+            name: node.name,
+            isDir: node.isDir,
+          };
+          e.dataTransfer.setData("application/x-pi-web-path", JSON.stringify(payload));
+          e.dataTransfer.setData("text/plain", buildAtMentionText(relPath, node.isDir));
+          e.dataTransfer.effectAllowed = "copy";
+        }}
         onClick={handleClick}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}

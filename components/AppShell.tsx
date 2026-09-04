@@ -599,10 +599,9 @@ export function AppShell() {
     // active. Updating identity for the exact same cwd is not a user switch.
     if (currentFreshCwd === cwd && currentProject !== newProject) return;
     // Existing sessions stay open when the worktree selector moves within the
-    // same project. A fresh composer must remount when its effective cwd moves,
-    // otherwise its already-created runtime would keep sending to the old cwd.
+    // same project, or when the selected session already belongs to the target project.
     if (
-      currentProject === newProject
+      (currentProject === newProject || (selectedSession && (selectedSession.projectKey ?? workspaceKeyOf(selectedSession)) === newProject))
       && (selectedSession !== null || currentFreshCwd === cwd)
     ) {
       return;
@@ -654,6 +653,17 @@ export function AppShell() {
         return;
       }
     }
+    const sessionProjectKey = session.projectKey ?? workspaceKeyOf(session);
+    const previousProjectKey = activeProjectKeyRef.current
+      ?? (selectedSession ? workspaceKeyOf(selectedSession) : null);
+    if (previousProjectKey && previousProjectKey !== sessionProjectKey) {
+      setFileTabs([]);
+      setActiveFileTabId(null);
+      setRightPanelOpen(false);
+    }
+    activeProjectKeyRef.current = sessionProjectKey;
+    setLastOpenSession(sessionProjectKey, session.id);
+    suppressCwdBumpRef.current = true;
     setNewSessionCwd(null);
     setSelectedSession(session);
     setSessionKey((k) => k + 1);
@@ -666,11 +676,6 @@ export function AppShell() {
     setInitialSessionRestored(true);
     // On mobile, collapse the overlay drawer so the chat is revealed after pick.
     if (isMobile && !isRestore) setSidebarOpen(false);
-    if (isRestore) {
-      // Suppress the redundant sessionKey bump that would come from the
-      // onCwdChange effect firing after setSelectedCwd in the sidebar
-      suppressCwdBumpRef.current = true;
-    }
     // Skip router.replace when restoring from URL — the param is already correct
     // and calling replace in production Next.js triggers a Suspense remount loop
     if (!isRestore) {
@@ -2517,7 +2522,7 @@ export function AppShell() {
               gitRefreshKey={explorerRefreshKey}
               initialDisplayMode={activeFileTab.initialDisplayMode}
               initialState={activeFileTab.viewerState}
-              watchEnabled={rightPanelOpen && rightPanelTab === "files"}
+              watchEnabled={rightPanelOpen && rightPanelTab === "files" /* watchEnabled={rightPanelOpen} */}
               onStateChange={(viewerState) => handleFileViewerStateChange(
                 activeFileTab.id,
                 activeFileTab.viewerRevision ?? 0,

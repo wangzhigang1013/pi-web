@@ -15,6 +15,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { buildAtMentionText } from "@/lib/file-fuzzy";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 import type { AppUpdateResponse } from "@/lib/api-types";
 import type { ToolEntry } from "@/lib/tool-presets";
@@ -413,7 +414,14 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     chatInputRef?.current?.addImages(files);
   }, [chatInputRef]);
 
-  const { isDragOver, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } = useDragDrop(onDrop);
+  const onDropPath = useCallback(({ path, isDir }: { path: string; name?: string; isDir?: boolean }) => {
+    chatInputRef?.current?.insertText(buildAtMentionText(path, Boolean(isDir)));
+  }, [chatInputRef]);
+
+  const { isDragOver, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } = useDragDrop({
+    onDropFiles: onDrop,
+    onDropPath,
+  });
 
   const visibleMessages = messages.filter((m) => m.role === "user" || m.role === "assistant");
   // Stable Map identity: `messages` doesn't change during streaming updates

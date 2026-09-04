@@ -10,6 +10,21 @@ import { getProjectActivity, getRecentProjects, sessionsForProject } from "@/lib
 import { workspaceKeyOf } from "@/lib/workspace-memory";
 import { formatRelativeTime } from "@/lib/i18n/format";
 import { useI18n } from "@/hooks/useI18n";
+import {
+  type PinnedWorkspace,
+  type SidebarViewMode,
+  buildSessionTreeStructure,
+  loadCollapsedFolders,
+  loadPinnedWorkspaces,
+  loadSidebarViewMode,
+  loadWorkspaceOrder,
+  loadArchivedSessionIds,
+  saveArchivedSessionIds,
+  saveCollapsedFolders,
+  savePinnedWorkspaces,
+  saveSidebarViewMode,
+  saveWorkspaceOrder,
+} from "@/lib/session-folders";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
 
@@ -398,6 +413,15 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const explorerRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileExplorerRef = useRef<FileExplorerHandle>(null);
 
+  // Codex / Z Code folder tree state
+  const [sidebarViewMode, setSidebarViewMode] = useState<SidebarViewMode>(() => loadSidebarViewMode());
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => loadCollapsedFolders());
+  const [pinnedWorkspaces, setPinnedWorkspaces] = useState<PinnedWorkspace[]>(() => loadPinnedWorkspaces());
+  const [sessionSearchQuery, setSessionSearchQuery] = useState("");
+  const [workspaceOrder, setWorkspaceOrder] = useState<string[]>(() => loadWorkspaceOrder());
+  const [archivedSessionIds, setArchivedSessionIds] = useState<Set<string>>(() => loadArchivedSessionIds());
+  const [expandedArchivedFolders, setExpandedArchivedFolders] = useState<Set<string>>(() => new Set());
+
   const loadSessions = useCallback(async (showLoading = false, force = false) => {
     try {
       if (showLoading) setLoading(true);
@@ -756,6 +780,12 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       saveLastCustomCwd(data.cwd);
       setCustomPathValue(data.cwd);
       setSelectedCwd(data.cwd);
+      setPinnedWorkspaces((prev) => {
+        if (prev.some((p) => p.key === data.projectKey)) return prev;
+        const next = [...prev, { root: data.projectRoot!, key: data.projectKey! }];
+        savePinnedWorkspaces(next);
+        return next;
+      });
       setCustomPathOpen(false);
       setDropdownOpen(false);
     } catch (e) {
@@ -951,6 +981,84 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
   const sessionFamilies = listSessionFamilies(filteredSessions);
 
+  const treeStructure = useMemo(() => {
+    return buildSessionTreeStructure({
+      allSessions,
+      recentProjects,
+      pinnedWorkspaces,
+      currentProjectKey: selectedProject?.key ?? null,
+      runningSessionIds,
+      unreadSessionIds,
+      workspaceOrder,
+      archivedSessionIds,
+      filterQuery: sessionSearchQuery,
+    });
+  }, [allSessions, recentProjects, pinnedWorkspaces, selectedProject?.key, runningSessionIds, unreadSessionIds, workspaceOrder, archivedSessionIds, sessionSearchQuery]);
+
+  const handleToggleArchive = useCallback((sessionId: string) => {
+    setArchivedSessionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(sessionId)) next.delete(sessionId);
+      else next.add(sessionId);
+      saveArchivedSessionIds(next);
+      return next;
+    });
+    // Keep archived folders strictly collapsed when archiving sessions
+    setExpandedArchivedFolders(new Set());
+  }, []);
+
+  const handleMoveWorkspace = useCallback((key: string, direction: -1 | 1) => {
+    setWorkspaceOrder(() => {
+      const currentKeys = treeStructure.workspaceGroups.map((g) => g.key);
+      const idx = currentKeys.indexOf(key);
+      if (idx < 0) return currentKeys;
+      const targetIdx = idx + direction;
+      if (targetIdx < 0 || targetIdx >= currentKeys.length) return currentKeys;
+
+      const next = [...currentKeys];
+      const temp = next[idx];
+      next[idx] = next[targetIdx];
+      next[targetIdx] = temp;
+      saveWorkspaceOrder(next);
+      return next;
+    });
+  }, [treeStructure.workspaceGroups]);
+
+  const toggleFolderCollapse = useCallback((key: string) => {
+    setCollapsedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      saveCollapsedFolders(next);
+      return next;
+    });
+  }, []);
+
+  const toggleArchivedFolder = useCallback((key: string) => {
+    setExpandedArchivedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const handleNewSessionInProject = useCallback((projectRoot: string) => {
+    setSelectedCwd(projectRoot);
+    const tempId = typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+    onNewSession?.(tempId, projectRoot);
+  }, [onNewSession]);
+
+  const handleRemovePinnedWorkspace = useCallback((key: string) => {
+    setPinnedWorkspaces((prev) => {
+      const next = prev.filter((p) => p.key !== key);
+      savePinnedWorkspaces(next);
+      return next;
+    });
+  }, []);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       {customPathOpen && (
@@ -975,7 +1083,40 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <PiWebTitle />
-          <div style={{ display: "flex", gap: 6 }}>
+          <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+            <ToolbarIconButton
+              onClick={() => {
+                const next: SidebarViewMode = sidebarViewMode === "tree" ? "focused" : "tree";
+                setSidebarViewMode(next);
+                saveSidebarViewMode(next);
+              }}
+              title={sidebarViewMode === "tree" ? t("sidebar.focusedView") : t("sidebar.treeView")}
+              color={sidebarViewMode === "tree" ? "var(--accent)" : "var(--text-muted)"}
+            >
+              {sidebarViewMode === "tree" ? (
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                  <line x1="12" y1="11" x2="12" y2="17" />
+                  <line x1="9" y1="14" x2="15" y2="14" />
+                </svg>
+              ) : (
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
+                  <line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
+                </svg>
+              )}
+            </ToolbarIconButton>
+            <ToolbarIconButton
+              onClick={handleCustomPathClick}
+              title={t("sidebar.addWorkspace")}
+              color="var(--text-muted)"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                <line x1="12" y1="11" x2="12" y2="17" />
+                <line x1="9" y1="14" x2="15" y2="14" />
+              </svg>
+            </ToolbarIconButton>
             <button
               onClick={handleNewSession}
               disabled={!selectedCwd}
@@ -1056,7 +1197,65 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           </div>
         </div>
 
-        {/* CWD picker */}
+        {/* Tree mode search bar */}
+        {sidebarViewMode === "tree" && (
+          <div style={{ position: "relative" }}>
+            <input
+              value={sessionSearchQuery}
+              onChange={(e) => setSessionSearchQuery(e.target.value)}
+              placeholder={t("sidebar.searchPlaceholder")}
+              style={{
+                width: "100%",
+                height: 29,
+                boxSizing: "border-box",
+                padding: "0 24px 0 28px",
+                fontSize: 11,
+                fontFamily: "var(--font-mono)",
+                background: "var(--bg-hover)",
+                border: "1px solid var(--border)",
+                borderRadius: 7,
+                outline: "none",
+                color: "var(--text)",
+              }}
+            />
+            <svg
+              width="11"
+              height="11"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="var(--text-dim)"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-4-4" />
+            </svg>
+            {sessionSearchQuery && (
+              <button
+                onClick={() => setSessionSearchQuery("")}
+                style={{
+                  position: "absolute",
+                  right: 6,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  color: "var(--text-dim)",
+                  cursor: "pointer",
+                  padding: "2px 4px",
+                  fontSize: 12,
+                }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* CWD picker (focused mode) */}
+        {sidebarViewMode === "focused" && (
         <div ref={dropdownRef} style={{ position: "relative" }}>
           <button
             onClick={() => setDropdownOpen((v) => !v)}
@@ -1260,6 +1459,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               </button>
           </AnimatedDropdown>
         </div>
+        )}
 
         {/* Worktree switcher — shown only for git projects at a checkout top
             level (repo subdirs keep their own project identity, so switching
@@ -1631,27 +1831,431 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             {t("sidebar.noSessions")}
           </div>
         )}
-        {sessionFamilies.map((family) => {
-          const familySessions = [family.root, ...family.subagents];
-          const displaySession = family.latestModified === family.root.modified
-            ? family.root
-            : { ...family.root, modified: family.latestModified };
-          return (
-            <SessionItem
-              key={family.root.id}
-              session={displaySession}
-              isSelected={familySessions.some((session) => session.id === selectedSessionId)}
-              isRunning={familySessions.some((session) => runningSessionIds.has(session.id))}
-              isUnread={familySessions.some((session) => unreadSessionIds.has(session.id))}
-              onClick={() => handleSelectSessionFromList(family.root)}
-              onRenamed={loadSessions}
-              onDeleted={(id) => {
-                onSessionDeleted?.(id);
-                loadSessions();
-              }}
-            />
-          );
-        })}
+        {sidebarViewMode === "focused" ? (
+          sessionFamilies.map((family) => {
+            const familySessions = [family.root, ...family.subagents];
+            const displaySession = family.latestModified === family.root.modified
+              ? family.root
+              : { ...family.root, modified: family.latestModified };
+            return (
+              <SessionItem
+                key={family.root.id}
+                session={displaySession}
+                isSelected={familySessions.some((session) => session.id === selectedSessionId)}
+                isRunning={familySessions.some((session) => runningSessionIds.has(session.id))}
+                isUnread={familySessions.some((session) => unreadSessionIds.has(session.id))}
+                onClick={() => handleSelectSessionFromList(family.root)}
+                onRenamed={loadSessions}
+                onDeleted={(id) => {
+                  onSessionDeleted?.(id);
+                  loadSessions();
+                }}
+              />
+            );
+          })
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "4px 0" }}>
+            {/* Workspace Groups */}
+            {treeStructure.workspaceGroups.map((group, groupIndex) => {
+              const folderKey = `ws_${group.key}`;
+              const isCollapsed = collapsedFolders.has(folderKey);
+              return (
+                <div key={group.key} style={{ display: "flex", flexDirection: "column" }}>
+                  <div
+                    draggable={true}
+                    onDragStart={(e) => {
+                      const payload = {
+                        type: "pi-web-path",
+                        path: group.name,
+                        fullPath: group.root,
+                        name: group.name,
+                        isDir: true,
+                      };
+                      e.dataTransfer.setData("application/x-pi-web-path", JSON.stringify(payload));
+                      e.dataTransfer.setData("text/plain", `@${group.name}/ `);
+                      e.dataTransfer.effectAllowed = "copy";
+                    }}
+                    onClick={() => {
+                      toggleFolderCollapse(folderKey);
+                    }}
+                    title={displayCwd(group.root, homeDir)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 6,
+                      height: 30, padding: "0 8px 0 10px",
+                      cursor: "grab",
+                      borderRadius: 6,
+                      margin: "1px 4px",
+                      background: group.isCurrent ? "rgba(37,99,235,0.08)" : "rgba(0,0,0,0.02)",
+                      border: group.isCurrent ? "1px solid rgba(37,99,235,0.2)" : "1px solid transparent",
+                      userSelect: "none",
+                      transition: "background 0.12s, border-color 0.12s",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!group.isCurrent) e.currentTarget.style.background = "var(--bg-hover)";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!group.isCurrent) e.currentTarget.style.background = "rgba(0,0,0,0.02)";
+                    }}
+                  >
+                    <svg
+                      width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8"
+                      strokeLinecap="round" strokeLinejoin="round"
+                      style={{
+                        flexShrink: 0,
+                        transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
+                        transition: "transform 0.15s",
+                        color: "var(--text-dim)",
+                      }}
+                    >
+                      <polyline points="2 3.5 5 6.5 8 3.5" />
+                    </svg>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: group.isCurrent ? "var(--accent)" : "var(--text-muted)" }}>
+                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                    </svg>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: group.isCurrent ? 600 : 500,
+                        color: group.isCurrent ? "var(--text)" : "var(--text-muted)",
+                        flex: 1,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {group.name}
+                    </span>
+                    <span style={{ fontSize: 10, color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>
+                      {group.families.length}
+                    </span>
+                    {showProjectActivity({ running: group.runningCount, unread: group.unreadCount }, t)}
+                    <div style={{ display: "flex", gap: 1, alignItems: "center" }}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleMoveWorkspace(group.key, -1);
+                        }}
+                        disabled={groupIndex === 0}
+                        title="上移一个位置"
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          width: 18, height: 18, padding: 0,
+                          background: "none", border: "none",
+                          borderRadius: 3,
+                          color: groupIndex === 0 ? "transparent" : "var(--text-dim)",
+                          cursor: groupIndex === 0 ? "default" : "pointer",
+                          opacity: groupIndex === 0 ? 0 : 0.8,
+                          transition: "background 0.12s, color 0.12s",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (groupIndex > 0) {
+                            e.currentTarget.style.background = "var(--bg-hover)";
+                            e.currentTarget.style.color = "var(--text)";
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = "none";
+                          e.currentTarget.style.color = "var(--text-dim)";
+                        }}
+                      >
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="18 15 12 9 6 15" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleMoveWorkspace(group.key, 1);
+                        }}
+                        disabled={groupIndex === treeStructure.workspaceGroups.length - 1}
+                        title="下移一个位置"
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          width: 18, height: 18, padding: 0,
+                          background: "none", border: "none",
+                          borderRadius: 3,
+                          color: groupIndex === treeStructure.workspaceGroups.length - 1 ? "transparent" : "var(--text-dim)",
+                          cursor: groupIndex === treeStructure.workspaceGroups.length - 1 ? "default" : "pointer",
+                          opacity: groupIndex === treeStructure.workspaceGroups.length - 1 ? 0 : 0.8,
+                          transition: "background 0.12s, color 0.12s",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (groupIndex < treeStructure.workspaceGroups.length - 1) {
+                            e.currentTarget.style.background = "var(--bg-hover)";
+                            e.currentTarget.style.color = "var(--text)";
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = "none";
+                          e.currentTarget.style.color = "var(--text-dim)";
+                        }}
+                      >
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                      </button>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleNewSessionInProject(group.root);
+                      }}
+                      title={t("sidebar.newSessionTitle", { path: group.root })}
+                      style={{
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        width: 20, height: 20, padding: 0,
+                        background: "none", border: "none",
+                        borderRadius: 4, color: "var(--text-muted)",
+                        cursor: "pointer", flexShrink: 0,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = "var(--bg-selected)";
+                        e.currentTarget.style.color = "var(--accent)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = "none";
+                        e.currentTarget.style.color = "var(--text-muted)";
+                      }}
+                    >
+                      <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <line x1="6" y1="1" x2="6" y2="11" /><line x1="1" y1="6" x2="11" y2="6" />
+                      </svg>
+                    </button>
+                    {group.isPinned && group.families.length === 0 && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemovePinnedWorkspace(group.key);
+                        }}
+                        title="从列表中移除工作区"
+                        style={{
+                          background: "none", border: "none", padding: "0 2px",
+                          color: "var(--text-dim)", cursor: "pointer", fontSize: 12,
+                        }}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                  {!isCollapsed && (
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                      {group.families.length === 0 && group.archivedFamilies.length === 0 ? (
+                        <div style={{ padding: "6px 14px 8px 28px", fontSize: 11, color: "var(--text-dim)" }}>
+                          <button
+                            onClick={() => handleNewSessionInProject(group.root)}
+                            style={{
+                              background: "none", border: "none", padding: 0,
+                              color: "var(--accent)", cursor: "pointer", fontSize: 11,
+                            }}
+                          >
+                            + {t("sidebar.new")}
+                          </button>
+                        </div>
+                      ) : (
+                        group.families.map((family) => {
+                          const familySessions = [family.root, ...family.subagents];
+                          const displaySession = family.latestModified === family.root.modified
+                            ? family.root
+                            : { ...family.root, modified: family.latestModified };
+                          return (
+                            <SessionItem
+                              key={family.root.id}
+                              session={displaySession}
+                              isSelected={familySessions.some((session) => session.id === selectedSessionId)}
+                              isRunning={familySessions.some((session) => runningSessionIds.has(session.id))}
+                              isUnread={familySessions.some((session) => unreadSessionIds.has(session.id))}
+                              onClick={() => handleSelectSessionFromList(family.root)}
+                              onRenamed={loadSessions}
+                              onDeleted={(id) => {
+                                onSessionDeleted?.(id);
+                                loadSessions();
+                              }}
+                              onToggleArchive={() => handleToggleArchive(family.root.id)}
+                              isArchived={false}
+                              depth={1}
+                            />
+                          );
+                        })
+                      )}
+                      {group.archivedFamilies.length > 0 && (() => {
+                        const archivedKey = `${folderKey}_archived`;
+                        const isExpanded = expandedArchivedFolders.has(archivedKey);
+                        return (
+                          <div style={{ display: "flex", flexDirection: "column", marginTop: 4 }}>
+                            <div
+                              onClick={() => toggleArchivedFolder(archivedKey)}
+                              style={{
+                                display: "flex", alignItems: "center", gap: 5,
+                                height: 24, padding: "0 8px 0 20px",
+                                cursor: "pointer", color: "var(--text-dim)", fontSize: 11,
+                                userSelect: "none",
+                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; }}
+                            >
+                              <svg
+                                width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8"
+                                strokeLinecap="round" strokeLinejoin="round"
+                                style={{ transform: isExpanded ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.15s" }}
+                              >
+                                <polyline points="2 3.5 5 6.5 8 3.5" />
+                              </svg>
+                              <span>📦 {t("sidebar.archivedCount", { count: group.archivedFamilies.length })}</span>
+                            </div>
+                            {isExpanded && group.archivedFamilies.map((family) => {
+                              const familySessions = [family.root, ...family.subagents];
+                              const displaySession = family.latestModified === family.root.modified
+                                ? family.root
+                                : { ...family.root, modified: family.latestModified };
+                              return (
+                                <SessionItem
+                                  key={family.root.id}
+                                  session={displaySession}
+                                  isSelected={familySessions.some((session) => session.id === selectedSessionId)}
+                                  isRunning={familySessions.some((session) => runningSessionIds.has(session.id))}
+                                  isUnread={familySessions.some((session) => unreadSessionIds.has(session.id))}
+                                  onClick={() => handleSelectSessionFromList(family.root)}
+                                  onRenamed={loadSessions}
+                                  onDeleted={(id) => {
+                                    onSessionDeleted?.(id);
+                                    loadSessions();
+                                  }}
+                                  onToggleArchive={() => handleToggleArchive(family.root.id)}
+                                  isArchived={true}
+                                  depth={1}
+                                />
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Unclassified Group */}
+            {treeStructure.unclassifiedGroup && (
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                <div
+                  onClick={() => toggleFolderCollapse("__unclassified__")}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6,
+                    height: 28, padding: "0 8px 0 10px",
+                    cursor: "pointer",
+                    borderRadius: 6,
+                    margin: "1px 4px",
+                    background: "rgba(0,0,0,0.02)",
+                    userSelect: "none",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(0,0,0,0.02)"; }}
+                >
+                  <svg
+                    width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8"
+                    strokeLinecap="round" strokeLinejoin="round"
+                    style={{
+                      flexShrink: 0,
+                      transform: collapsedFolders.has("__unclassified__") ? "rotate(-90deg)" : "rotate(0deg)",
+                      transition: "transform 0.15s",
+                      color: "var(--text-dim)",
+                    }}
+                  >
+                    <polyline points="2 3.5 5 6.5 8 3.5" />
+                  </svg>
+                  <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)", flex: 1 }}>
+                    {treeStructure.unclassifiedGroup.name}
+                  </span>
+                  <span style={{ fontSize: 10, color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>
+                    {treeStructure.unclassifiedGroup.families.length}
+                  </span>
+                  {showProjectActivity({ running: treeStructure.unclassifiedGroup.runningCount, unread: treeStructure.unclassifiedGroup.unreadCount }, t)}
+                </div>
+                {!collapsedFolders.has("__unclassified__") && (
+                  <div style={{ display: "flex", flexDirection: "column" }}>
+                    {treeStructure.unclassifiedGroup.families.map((family) => {
+                      const familySessions = [family.root, ...family.subagents];
+                      const displaySession = family.latestModified === family.root.modified
+                        ? family.root
+                        : { ...family.root, modified: family.latestModified };
+                      return (
+                        <SessionItem
+                          key={family.root.id}
+                          session={displaySession}
+                          isSelected={familySessions.some((session) => session.id === selectedSessionId)}
+                          isRunning={familySessions.some((session) => runningSessionIds.has(session.id))}
+                          isUnread={familySessions.some((session) => unreadSessionIds.has(session.id))}
+                          onClick={() => handleSelectSessionFromList(family.root)}
+                          onRenamed={loadSessions}
+                          onDeleted={(id) => {
+                            onSessionDeleted?.(id);
+                            loadSessions();
+                          }}
+                          onToggleArchive={() => handleToggleArchive(family.root.id)}
+                          isArchived={false}
+                          depth={1}
+                        />
+                      );
+                    })}
+                    {treeStructure.unclassifiedGroup.archivedFamilies.length > 0 && (() => {
+                      const archivedKey = "__unclassified___archived";
+                      const isExpanded = expandedArchivedFolders.has(archivedKey);
+                      return (
+                        <div style={{ display: "flex", flexDirection: "column", marginTop: 4 }}>
+                          <div
+                            onClick={() => toggleArchivedFolder(archivedKey)}
+                            style={{
+                              display: "flex", alignItems: "center", gap: 5,
+                              height: 24, padding: "0 8px 0 20px",
+                              cursor: "pointer", color: "var(--text-dim)", fontSize: 11,
+                              userSelect: "none",
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; }}
+                          >
+                            <svg
+                              width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8"
+                              strokeLinecap="round" strokeLinejoin="round"
+                              style={{ transform: isExpanded ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.15s" }}
+                            >
+                              <polyline points="2 3.5 5 6.5 8 3.5" />
+                            </svg>
+                            <span>📦 {t("sidebar.archivedCount", { count: treeStructure.unclassifiedGroup.archivedFamilies.length })}</span>
+                          </div>
+                          {isExpanded && treeStructure.unclassifiedGroup.archivedFamilies.map((family) => {
+                            const familySessions = [family.root, ...family.subagents];
+                            const displaySession = family.latestModified === family.root.modified
+                              ? family.root
+                              : { ...family.root, modified: family.latestModified };
+                            return (
+                              <SessionItem
+                                key={family.root.id}
+                                session={displaySession}
+                                isSelected={familySessions.some((session) => session.id === selectedSessionId)}
+                                isRunning={familySessions.some((session) => runningSessionIds.has(session.id))}
+                                isUnread={familySessions.some((session) => unreadSessionIds.has(session.id))}
+                                onClick={() => handleSelectSessionFromList(family.root)}
+                                onRenamed={loadSessions}
+                                onDeleted={(id) => {
+                                  onSessionDeleted?.(id);
+                                  loadSessions();
+                                }}
+                                onToggleArchive={() => handleToggleArchive(family.root.id)}
+                                isArchived={true}
+                                depth={1}
+                              />
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* File Explorer section */}
@@ -1809,6 +2413,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           )}
         </div>
       )}
+
+
+
     </div>
   );
 }
@@ -1932,6 +2539,8 @@ function SessionItem({
   hasChildren = false,
   collapsed = false,
   onToggleCollapse,
+  isArchived = false,
+  onToggleArchive,
 }: {
   session: SessionInfo;
   isSelected: boolean;
@@ -1944,6 +2553,8 @@ function SessionItem({
   hasChildren?: boolean;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+  isArchived?: boolean;
+  onToggleArchive?: () => void;
 }) {
   const { locale, t } = useI18n();
   const [hovered, setHovered] = useState(false);
@@ -2211,6 +2822,39 @@ function SessionItem({
           {/* Action buttons — shown on hover */}
           {hovered && !session.transient && (
             <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+              {onToggleArchive && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleArchive();
+                  }}
+                  title={t(isArchived ? "sidebar.unarchive" : "sidebar.archive")}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 32, height: 32, padding: 0,
+                    background: "var(--bg-hover)", border: "1px solid var(--border)",
+                    borderRadius: 7, color: isArchived ? "var(--accent)" : "var(--text-muted)",
+                    cursor: "pointer", flexShrink: 0,
+                    transition: "background 0.12s, color 0.12s, border-color 0.12s",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "var(--bg-selected)";
+                    e.currentTarget.style.color = "var(--accent)";
+                    e.currentTarget.style.borderColor = "rgba(37,99,235,0.35)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "var(--bg-hover)";
+                    e.currentTarget.style.color = isArchived ? "var(--accent)" : "var(--text-muted)";
+                    e.currentTarget.style.borderColor = "var(--border)";
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="21 8 21 21 3 21 3 8" />
+                    <rect x="1" y="3" width="22" height="5" />
+                    <line x1="10" y1="12" x2="14" y2="12" />
+                  </svg>
+                </button>
+              )}
               <button
                 onClick={startRename}
                 title={t("sidebar.rename")}

@@ -97,11 +97,14 @@ async function runCommand(
   args: string[],
   options: { cwd: string; env?: NodeJS.ProcessEnv },
 ): Promise<string> {
-  const { stdout } = await execFileAsync(command, args, {
+  const isWindows = process.platform === "win32";
+  const cmd = isWindows && command === "npm" ? "npm.cmd" : command;
+  const { stdout } = await execFileAsync(cmd, args, {
     cwd: options.cwd,
     env: options.env ? { ...process.env, ...options.env } : process.env,
     encoding: "utf8",
     timeout: 10_000,
+    ...(isWindows ? { shell: true } : {}),
   });
   return stdout;
 }

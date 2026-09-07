@@ -865,7 +865,7 @@ function BlockView({ block, searchTarget, toolResults, isStreaming, streamingDur
     return <div data-message-text data-search-target={searchTarget || undefined}><TextBlock block={block as TextContent} isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile} /></div>;
   }
   if (block.type === "thinking") {
-    return <ThinkingBlock block={block as ThinkingContent} duration={streamingDuration} sessionId={sessionId} entryId={entryId} blockIndex={blockIndex} />;
+    return <ThinkingBlock block={block as ThinkingContent} duration={streamingDuration} isStreaming={isStreaming} sessionId={sessionId} entryId={entryId} blockIndex={blockIndex} />;
   }
   if (block.type === "toolCall") {
     const tc = block as ToolCallContent;
@@ -880,9 +880,10 @@ function TextBlock({ block, isStreaming, cwd, onOpenFile }: { block: TextContent
   return <SafeMarkdownBody isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile}>{block.text}</SafeMarkdownBody>;
 }
 
-export function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex }: {
+export function ThinkingBlock({ block, duration, isStreaming, sessionId, entryId, blockIndex }: {
   block: ThinkingContent;
   duration?: number;
+  isStreaming?: boolean;
   sessionId?: string;
   entryId?: string;
   blockIndex: number;
@@ -892,9 +893,25 @@ export function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex 
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [liveDuration, setLiveDuration] = useState<number | null>(null);
+  const startRef = useRef<number>(Date.now());
   const tRef = useRef(t);
   tRef.current = t;
   const preview = getThinkingPreview(block.thinking);
+
+  useEffect(() => {
+    if (!isStreaming || duration !== undefined) {
+      setLiveDuration(null);
+      return;
+    }
+    startRef.current = Date.now();
+    const timer = setInterval(() => {
+      setLiveDuration(Math.max(1, Math.round((Date.now() - startRef.current) / 1000)));
+    }, 500);
+    return () => clearInterval(timer);
+  }, [isStreaming, duration]);
+
+  const displayDuration = duration ?? liveDuration;
 
   // Keep already-mounted blocks in sync when the preference changes.
   useEffect(() => {
@@ -988,8 +1005,37 @@ export function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex 
            {loading ? t("i18n.loadingThinking") : error ?? (block.deferred ? content : block.thinking)}
         </div>
       )}
-      {duration !== undefined && (
-        <span style={{ flexShrink: 0, color: "var(--text-dim)", fontVariantNumeric: "tabular-nums" }}>{duration}s</span>
+      {displayDuration !== undefined && (
+        <span
+          style={{
+            flexShrink: 0,
+            marginLeft: "auto",
+            padding: "1px 7px",
+            borderRadius: 5,
+            background: isStreaming ? "rgba(56, 189, 248, 0.12)" : "var(--bg-hover)",
+            color: isStreaming ? "var(--accent)" : "var(--text-dim)",
+            border: isStreaming ? "1px solid rgba(56, 189, 248, 0.3)" : "1px solid var(--border)",
+            fontSize: 10.5,
+            fontWeight: 500,
+            fontVariantNumeric: "tabular-nums",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          {isStreaming && (
+            <span
+              style={{
+                width: 5,
+                height: 5,
+                borderRadius: "50%",
+                background: "var(--accent)",
+                display: "inline-block",
+              }}
+            />
+          )}
+          {isStreaming ? `思考中 ${displayDuration}s` : `耗时 ${displayDuration}s`}
+        </span>
       )}
     </div>
   );

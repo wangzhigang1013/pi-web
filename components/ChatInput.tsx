@@ -2019,6 +2019,58 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               </div>
             );
           })()}
+          {!compact && isPlanActive && (
+            <div
+              style={{
+                position: "absolute",
+                top: -10,
+                right: 16,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                padding: "2px 8px",
+                borderRadius: 9,
+                background: "var(--bg)",
+                border: "1px solid rgba(56, 189, 248, 0.45)",
+                color: "rgb(14, 165, 233)",
+                fontSize: 10.5,
+                fontWeight: 600,
+                boxShadow: "0 2px 8px rgba(56, 189, 248, 0.12)",
+                pointerEvents: "none",
+                zIndex: 10,
+                letterSpacing: "-0.01em",
+              }}
+            >
+              <span style={{ width: 5, height: 5, borderRadius: "50%", background: "rgb(14, 165, 233)" }} />
+              Plan Mode · 只读探索与规划
+            </div>
+          )}
+          {!compact && isEditActive && (
+            <div
+              style={{
+                position: "absolute",
+                top: -10,
+                right: 16,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                padding: "2px 8px",
+                borderRadius: 9,
+                background: "var(--bg)",
+                border: "1px solid rgba(245, 158, 11, 0.45)",
+                color: "rgb(217, 119, 6)",
+                fontSize: 10.5,
+                fontWeight: 600,
+                boxShadow: "0 2px 8px rgba(245, 158, 11, 0.12)",
+                pointerEvents: "none",
+                zIndex: 10,
+                letterSpacing: "-0.01em",
+              }}
+            >
+              <span style={{ width: 5, height: 5, borderRadius: "50%", background: "rgb(217, 119, 6)" }} />
+              Edit Mode · 仅修改不执行
+            </div>
+          )}
           <div
             style={{
               minWidth: 0,
@@ -2026,14 +2078,26 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               flexDirection: compact ? "column" : "row",
               gap: 8,
               alignItems: compact ? "stretch" : "center",
-              background: "var(--bg)",
-              border: compact ? "none" : `1px solid ${bashMode ? "var(--tool-bg)" : isStreaming && (onSteer || onFollowUp)
-                ? "rgba(234,179,8,0.4)"
-                : "color-mix(in srgb, var(--border) 70%, transparent)"}`,
+              background: compact ? "var(--bg)" : isPlanActive
+                ? "color-mix(in srgb, rgba(56, 189, 248, 0.03) 100%, var(--bg))"
+                : isEditActive
+                ? "color-mix(in srgb, rgba(245, 158, 11, 0.03) 100%, var(--bg))"
+                : "var(--bg)",
+              border: compact ? "none" : isPlanActive
+                ? "1px solid rgba(56, 189, 248, 0.55)"
+                : isEditActive
+                ? "1px solid rgba(245, 158, 11, 0.55)"
+                : `1px solid ${bashMode ? "var(--tool-bg)" : isStreaming && (onSteer || onFollowUp)
+                  ? "rgba(234,179,8,0.4)"
+                  : "color-mix(in srgb, var(--border) 70%, transparent)"}`,
               borderRadius: compact ? 0 : 14,
               padding: compact ? 0 : "10px 10px 10px 14px",
-              boxShadow: compact ? "none" : "0 1px 2px rgba(15,23,42,0.04), 0 8px 24px -12px rgba(15,23,42,0.10)",
-              transition: "border-color 0.15s, background 0.15s, box-shadow 0.15s",
+              boxShadow: compact ? "none" : isPlanActive
+                ? "0 0 0 1px rgba(56, 189, 248, 0.15), 0 0 20px -3px rgba(56, 189, 248, 0.22), 0 8px 24px -12px rgba(15,23,42,0.10)"
+                : isEditActive
+                ? "0 0 0 1px rgba(245, 158, 11, 0.15), 0 0 20px -3px rgba(245, 158, 11, 0.22), 0 8px 24px -12px rgba(15,23,42,0.10)"
+                : "0 1px 2px rgba(15,23,42,0.04), 0 8px 24px -12px rgba(15,23,42,0.10)",
+              transition: "border-color 0.2s, background 0.2s, box-shadow 0.2s",
             } as React.CSSProperties}
           >
           <textarea

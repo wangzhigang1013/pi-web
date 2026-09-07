@@ -423,6 +423,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const [explorerRefreshDone, setExplorerRefreshDone] = useState(false);
   const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(() => new Set());
   const [unreadSessionIds, setUnreadSessionIds] = useState<Set<string>>(() => loadUnreadSessionIds());
+  const serverBootIdRef = useRef<string | null>(null);
   const previousRunningSessionIdsRef = useRef<Set<string>>(new Set());
   const currentSuppressedCompletionSessionIdsRef = useRef<Set<string>>(new Set());
   const previousSuppressedCompletionSessionIdsRef = useRef<Set<string>>(new Set());
@@ -532,11 +533,22 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         });
         if (!res.ok) return;
         const data = await res.json() as {
+          serverBootId?: string;
           sessionListVersion: number;
           runningSessionIds?: string[];
           completionNotificationSuppressedSessionIds?: string[];
         };
         if (stopped || controller !== current) return;
+
+        // 服务重启无缝感知：若 Server Boot ID 发生变化，自动平滑刷新网页加载最新界面
+        if (serverBootIdRef.current && data.serverBootId && serverBootIdRef.current !== data.serverBootId) {
+          window.location.reload();
+          return;
+        }
+        if (data.serverBootId) {
+          serverBootIdRef.current = data.serverBootId;
+        }
+
         runningPollAuthoritativeRef.current = true;
         currentSuppressedCompletionSessionIdsRef.current = new Set(
           data.completionNotificationSuppressedSessionIds ?? [],
@@ -547,7 +559,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           await loadSessions();
         }
       } catch {
-        // Keep the last known state; the next visible-tab poll retries.
+        // 服务离线时快速重试，以便在服务重新上线后第一时间无缝感知并刷新
+        if (!stopped && document.visibilityState === "visible") {
+          timer = setTimeout(() => void poll(), 800);
+          return;
+        }
       } finally {
         if (controller === current) controller = null;
         schedule();
@@ -1652,13 +1668,15 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                     }}
                     title={displayCwd(group.root, homeDir)}
                     style={{
-                      display: "flex", alignItems: "center", gap: 6,
-                      height: 30, padding: "0 8px 0 10px",
+                      display: "flex", alignItems: "center", gap: 7,
+                      height: 35, padding: "0 8px 0 10px",
                       cursor: "grab",
-                      borderRadius: 6,
-                      margin: "1px 4px",
-                      background: group.isCurrent ? "rgba(37,99,235,0.08)" : "rgba(0,0,0,0.02)",
-                      border: group.isCurrent ? "1px solid rgba(37,99,235,0.2)" : "1px solid transparent",
+                      borderRadius: 7,
+                      margin: "3px 4px 2px",
+                      background: group.isCurrent ? "color-mix(in srgb, var(--accent) 9%, var(--bg))" : "transparent",
+                      border: group.isCurrent ? "1px solid color-mix(in srgb, var(--accent) 30%, transparent)" : "1px solid transparent",
+                      borderLeft: group.isCurrent ? "3px solid var(--accent)" : "1px solid transparent",
+                      boxShadow: group.isCurrent ? "0 1px 3px rgba(0,0,0,0.03)" : "none",
                       userSelect: "none",
                       transition: "background 0.12s, border-color 0.12s",
                     }}
@@ -1666,11 +1684,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                       if (!group.isCurrent) e.currentTarget.style.background = "var(--bg-hover)";
                     }}
                     onMouseLeave={(e) => {
-                      if (!group.isCurrent) e.currentTarget.style.background = "rgba(0,0,0,0.02)";
+                      if (!group.isCurrent) e.currentTarget.style.background = "transparent";
                     }}
                   >
                     <svg
-                      width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8"
+                      width="11" height="11" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8"
                       strokeLinecap="round" strokeLinejoin="round"
                       style={{
                         flexShrink: 0,
@@ -1681,24 +1699,25 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                     >
                       <polyline points="2 3.5 5 6.5 8 3.5" />
                     </svg>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: group.isCurrent ? "var(--accent)" : "var(--text-muted)" }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: group.isCurrent ? "var(--accent)" : "var(--text-muted)" }}>
                       <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                     </svg>
                     {showProjectActivity({ running: group.runningCount, unread: group.unreadCount }, t)}
                     <span
                       style={{
-                        fontSize: 12,
-                        fontWeight: group.isCurrent ? 600 : 500,
+                        fontSize: 13,
+                        fontWeight: 600,
                         color: group.isCurrent ? "var(--text)" : "var(--text-muted)",
                         flex: 1,
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
+                        letterSpacing: "-0.01em",
                       }}
                     >
                       {group.name}
                     </span>
-                    <span style={{ fontSize: 10, color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>
+                    <span style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: "var(--font-mono)", padding: "1px 6px", background: "var(--bg-hover)", borderRadius: 8 }}>
                       {group.families.length}
                     </span>
                     <div style={{ display: "flex", gap: 1, alignItems: "center" }}>
@@ -1913,19 +1932,19 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 <div
                   onClick={() => toggleFolderCollapse("__unclassified__")}
                   style={{
-                    display: "flex", alignItems: "center", gap: 6,
-                    height: 28, padding: "0 8px 0 10px",
+                    display: "flex", alignItems: "center", gap: 7,
+                    height: 33, padding: "0 8px 0 10px",
                     cursor: "pointer",
-                    borderRadius: 6,
-                    margin: "1px 4px",
-                    background: "rgba(0,0,0,0.02)",
+                    borderRadius: 7,
+                    margin: "2px 4px 1px",
+                    background: "rgba(0,0,0,0.025)",
                     userSelect: "none",
                   }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(0,0,0,0.02)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(0,0,0,0.025)"; }}
                 >
                   <svg
-                    width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8"
+                    width="11" height="11" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8"
                     strokeLinecap="round" strokeLinejoin="round"
                     style={{
                       flexShrink: 0,
@@ -1937,10 +1956,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                     <polyline points="2 3.5 5 6.5 8 3.5" />
                   </svg>
                   {showProjectActivity({ running: treeStructure.unclassifiedGroup.runningCount, unread: treeStructure.unclassifiedGroup.unreadCount }, t)}
-                  <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)", flex: 1 }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-muted)", flex: 1 }}>
                     {treeStructure.unclassifiedGroup.name}
                   </span>
-                  <span style={{ fontSize: 10, color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>
+                  <span style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: "var(--font-mono)", padding: "1px 6px", background: "var(--bg-hover)", borderRadius: 8 }}>
                     {treeStructure.unclassifiedGroup.families.length}
                   </span>
                 </div>
@@ -2443,10 +2462,10 @@ function SessionItem({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => { setHovered(false); }}
       style={{
-        height: SESSION_LIST_ITEM_HEIGHT,
+        height: 34,
         display: "flex",
         alignItems: "center",
-        paddingLeft: depth > 0 ? depth * 12 + 14 : 14,
+        paddingLeft: depth > 0 ? (depth > 1 ? 30 : 20) : 12,
         paddingRight: 8,
         cursor: confirmDelete || renaming ? "default" : "pointer",
         background: confirmDelete
@@ -2465,21 +2484,21 @@ function SessionItem({
         /* ── Delete confirmation: same height, two flat buttons ── */
         <>
           <div style={{ flex: 1, minWidth: 0, fontSize: 12, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {t("sidebar.deleteSession", { title: title.slice(0, 22) + (title.length > 22 ? "…" : "") })}
+            {t("sidebar.deleteSession", { title: title.slice(0, 16) + (title.length > 16 ? "…" : "") })}
           </div>
-          <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+          <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
             <button
               onClick={handleDeleteConfirm}
               style={{
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
-                height: 30, padding: "0 11px",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 3,
+                height: 24, padding: "0 8px",
                 background: "#ef4444", border: "none",
-                borderRadius: 6, color: "#fff",
-                cursor: "pointer", fontSize: 12, fontWeight: 600,
+                borderRadius: 5, color: "#fff",
+                cursor: "pointer", fontSize: 11, fontWeight: 600,
                 whiteSpace: "nowrap",
               }}
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="3 6 5 6 21 6" />
                 <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
                 <path d="M10 11v6M14 11v6" />
@@ -2491,10 +2510,10 @@ function SessionItem({
               onClick={handleDeleteCancel}
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center",
-                height: 30, padding: "0 11px",
+                height: 24, padding: "0 8px",
                 background: "var(--bg)", border: "1px solid var(--border)",
-                borderRadius: 6, color: "var(--text-muted)",
-                cursor: "pointer", fontSize: 12, fontWeight: 500,
+                borderRadius: 5, color: "var(--text-muted)",
+                cursor: "pointer", fontSize: 11, fontWeight: 500,
                 whiteSpace: "nowrap",
               }}
             >
@@ -2517,96 +2536,81 @@ function SessionItem({
           style={{
             flex: 1,
             fontSize: 12,
-            padding: "5px 8px",
+            padding: "2px 8px",
             border: "1px solid var(--accent)",
             borderRadius: 5,
             outline: "none",
             background: "var(--bg)",
             color: "var(--text)",
-            height: 30,
+            height: 26,
           }}
         />
       ) : (
-        /* ── Normal view ── */
+        /* ── Normal view: 精简单行模式 ── */
         <>
-          {/* Leading status indicator: running spinner, green unread dot, or subagent icon */}
-          {isRunning ? (
-            <RunningSessionIndicator />
-          ) : isUnread ? (
-            <UnreadSessionIndicator />
-          ) : session.relation?.kind === "subagent" ? (
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-              <rect x="5" y="7" width="14" height="11" rx="2" />
-              <path d="M9 11h.01M15 11h.01M9 15h6M12 7V4M10 4h4" />
-            </svg>
-          ) : null}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-                minWidth: 0,
-                fontSize: 12,
-                fontWeight: isSelected ? 500 : 400,
-                lineHeight: 1.4,
-                color: "var(--text)",
-              }}
-              title={title}
-            >
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
-                {title}
-              </span>
-            </div>
-            <div style={{ marginTop: 2, display: "flex", alignItems: "center", gap: 8, color: "var(--text-dim)", fontSize: 11, minWidth: 0 }}>
-              {isRunning ? (
-                <span style={{ color: "var(--accent)", fontWeight: 500 }}>{t("sidebar.agentRunning")}</span>
-              ) : isUnread ? (
-                <span style={{ color: "#10b981", fontWeight: 500 }}>{t("sidebar.newActivity")}</span>
-              ) : (
-                <span title={session.modified}>{formatRelativeTime(session.modified, locale)}</span>
-              )}
-              <span>{t("sidebar.messagesCount", { count: session.messageCount })}</span>
-              {session.isWorktree && session.branch && (
-                <span
-                  title={`Worktree: ${session.cwd}`}
-                  style={{ display: "flex", alignItems: "center", gap: 3, color: "var(--accent)", minWidth: 0, overflow: "hidden" }}
-                >
-                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                    <line x1="6" y1="3" x2="6" y2="15" />
-                    <circle cx="18" cy="6" r="3" />
-                    <circle cx="6" cy="18" r="3" />
-                    <path d="M18 9a9 9 0 0 1-9 9" />
-                  </svg>
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.branch}</span>
-                </span>
-              )}
-            </div>
+          {/* 固定状态槽位：宽度固定 16px，无论是否有状态，标题位置永远纹丝不动 */}
+          <div
+            style={{
+              width: 16,
+              height: 16,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            {isRunning ? (
+              <RunningSessionIndicator />
+            ) : isUnread ? (
+              <UnreadSessionIndicator />
+            ) : session.relation?.kind === "subagent" ? (
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="5" y="7" width="14" height="11" rx="2" />
+                <path d="M9 11h.01M15 11h.01M9 15h6M12 7V4M10 4h4" />
+              </svg>
+            ) : null}
           </div>
 
-          {/* Collapse toggle — always visible when has children */}
-          {hasChildren && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onToggleCollapse?.(); }}
-              title={t(collapsed ? "sidebar.expandSubagents" : "sidebar.collapseSubagents")}
+          {/* 会话标题（单行渐变遮罩） */}
+          <span
+            style={{
+              flex: 1,
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "clip",
+              whiteSpace: "nowrap",
+              fontSize: 12.5,
+              fontWeight: isSelected ? 600 : 400,
+              color: isSelected ? "var(--text)" : "var(--text-muted)",
+              lineHeight: 1.3,
+              maskImage: "linear-gradient(to right, black calc(100% - 22px), transparent 100%)",
+              WebkitMaskImage: "linear-gradient(to right, black calc(100% - 22px), transparent 100%)",
+            }}
+            title={title}
+          >
+            {title}
+          </span>
+
+          {/* 右侧：未悬停显示时间（多少分钟前）；悬停时显示快捷操作按钮 */}
+          {!hovered && (
+            <span
+              title={session.modified}
               style={{
-                display: "flex", alignItems: "center", justifyContent: "center",
-                width: 20, height: 20, padding: 0, flexShrink: 0,
-                background: "none", border: "none",
-                color: "var(--text-dim)", cursor: "pointer",
-                transform: collapsed ? "rotate(-90deg)" : "none",
-                transition: "transform 0.15s",
+                flexShrink: 0,
+                fontSize: 11,
+                color: "var(--text-dim)",
+                marginLeft: "auto",
+                paddingLeft: 6,
+                whiteSpace: "nowrap",
               }}
             >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="2 3.5 5 6.5 8 3.5" />
-              </svg>
-            </button>
+              {formatRelativeTime(session.modified, locale)}
+            </span>
           )}
 
           {/* Action buttons — shown on hover */}
           {hovered && !session.transient && (
-            <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+            <div style={{ display: "flex", gap: 3, flexShrink: 0, marginLeft: "auto", paddingLeft: 4 }}>
               {onToggleArchive && (
                 <button
                   onClick={(e) => {
@@ -2616,24 +2620,22 @@ function SessionItem({
                   title={t(isArchived ? "sidebar.unarchive" : "sidebar.archive")}
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    width: 32, height: 32, padding: 0,
+                    width: 22, height: 22, padding: 0,
                     background: "var(--bg-hover)", border: "1px solid var(--border)",
-                    borderRadius: 7, color: isArchived ? "var(--accent)" : "var(--text-muted)",
+                    borderRadius: 4, color: isArchived ? "var(--accent)" : "var(--text-muted)",
                     cursor: "pointer", flexShrink: 0,
-                    transition: "background 0.12s, color 0.12s, border-color 0.12s",
+                    transition: "background 0.12s, color 0.12s",
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.background = "var(--bg-selected)";
                     e.currentTarget.style.color = "var(--accent)";
-                    e.currentTarget.style.borderColor = "rgba(37,99,235,0.35)";
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.background = "var(--bg-hover)";
                     e.currentTarget.style.color = isArchived ? "var(--accent)" : "var(--text-muted)";
-                    e.currentTarget.style.borderColor = "var(--border)";
                   }}
                 >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="21 8 21 21 3 21 3 8" />
                     <rect x="1" y="3" width="22" height="5" />
                     <line x1="10" y1="12" x2="14" y2="12" />
@@ -2645,24 +2647,22 @@ function SessionItem({
                 title={t("sidebar.rename")}
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 32, height: 32, padding: 0,
+                  width: 22, height: 22, padding: 0,
                   background: "var(--bg-hover)", border: "1px solid var(--border)",
-                  borderRadius: 7, color: "var(--text-muted)",
+                  borderRadius: 4, color: "var(--text-muted)",
                   cursor: "pointer", flexShrink: 0,
-                  transition: "background 0.12s, color 0.12s, border-color 0.12s",
+                  transition: "background 0.12s, color 0.12s",
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.background = "var(--bg-selected)";
                   e.currentTarget.style.color = "var(--accent)";
-                  e.currentTarget.style.borderColor = "rgba(37,99,235,0.35)";
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = "var(--bg-hover)";
                   e.currentTarget.style.color = "var(--text-muted)";
-                  e.currentTarget.style.borderColor = "var(--border)";
                 }}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
                 </svg>
               </button>
@@ -2671,24 +2671,22 @@ function SessionItem({
                 title={t("sidebar.deleteWithShiftClick")}
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 32, height: 32, padding: 0,
+                  width: 22, height: 22, padding: 0,
                   background: "var(--bg-hover)", border: "1px solid var(--border)",
-                  borderRadius: 7, color: "var(--text-muted)",
+                  borderRadius: 4, color: "var(--text-muted)",
                   cursor: "pointer", flexShrink: 0,
-                  transition: "background 0.12s, color 0.12s, border-color 0.12s",
+                  transition: "background 0.12s, color 0.12s",
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "rgba(239,68,68,0.08)";
+                  e.currentTarget.style.background = "rgba(239,68,68,0.12)";
                   e.currentTarget.style.color = "#ef4444";
-                  e.currentTarget.style.borderColor = "rgba(239,68,68,0.35)";
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = "var(--bg-hover)";
                   e.currentTarget.style.color = "var(--text-muted)";
-                  e.currentTarget.style.borderColor = "var(--border)";
                 }}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="3 6 5 6 21 6" />
                   <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
                   <path d="M10 11v6M14 11v6" />
@@ -2696,6 +2694,26 @@ function SessionItem({
                 </svg>
               </button>
             </div>
+          )}
+
+          {/* 子智能体折叠/展开按钮 */}
+          {hasChildren && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onToggleCollapse?.(); }}
+              title={t(collapsed ? "sidebar.expandSubagents" : "sidebar.collapseSubagents")}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: 18, height: 18, padding: 0, flexShrink: 0,
+                background: "none", border: "none",
+                color: "var(--text-dim)", cursor: "pointer",
+                transform: collapsed ? "rotate(-90deg)" : "none",
+                transition: "transform 0.15s",
+              }}
+            >
+              <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="2 3.5 5 6.5 8 3.5" />
+              </svg>
+            </button>
           )}
         </>
       )}

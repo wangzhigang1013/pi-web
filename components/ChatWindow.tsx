@@ -671,6 +671,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     container.scrollTop = restoreScrollTop(container.scrollHeight, prevScrollDistanceRef.current);
     prevScrollDistanceRef.current = null;
   }, [visibleCount, scrollContainerRef]);
+
+  // When compaction completes, keep the viewport anchored at the bottom
+  useEffect(() => {
+    if (!compactResult) return;
+    scrollToBottom("instant");
+  }, [compactResult, scrollToBottom]);
   // Push session stats up to AppShell for the top bar.
   // Compare scalar fields to avoid loops from new object identity each render.
   const statsKey = sessionStats

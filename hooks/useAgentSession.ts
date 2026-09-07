@@ -1272,7 +1272,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           setCompactResult(null);
         } else if (!event.aborted) {
           setCompactResult(readCompactResult(event.result, (event.reason as string | undefined) ?? "auto"));
-          if (sessionIdRef.current) loadSession(sessionIdRef.current);
+          if (sessionIdRef.current) {
+            void loadSession(sessionIdRef.current).then(() => {
+              isNearBottomRef.current = true;
+              scrollToBottom("auto");
+            });
+          }
         }
         break;
       case "extension_ui_request":
@@ -1545,14 +1550,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     try {
       const result = await sendAgentCommand<CompactCommandResult>(sid, { type: "compact" });
       setCompactResult(readCompactResult(result, "manual"));
-      await loadSession(sid, true);
+      await loadSession(sid, false);
+      isNearBottomRef.current = true;
+      scrollToBottom("instant");
     } catch (e) {
       setCompactError(e instanceof Error ? e.message : String(e));
       setCompactResult(null);
     } finally {
       setIsCompacting(false);
     }
-  }, [isCompacting, loadSession]);
+  }, [isCompacting, loadSession, scrollToBottom]);
 
   const loadModels = useCallback(async (signal?: AbortSignal) => {
     const modelCwd = newSessionCwd ?? session?.cwd ?? "";
@@ -1633,7 +1640,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             ...(args ? { customInstructions: args } : {}),
           });
           setCompactResult(readCompactResult(result, "manual"));
-          if (await loadSession(sid, true)) promoteNewSession();
+          if (await loadSession(sid, false)) promoteNewSession();
+          isNearBottomRef.current = true;
+          scrollToBottom("instant");
           return complete({ handled: true, message: "Compacted context" });
         }
 
@@ -2077,9 +2086,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   useEffect(() => {
     if (!compactResult) return;
+    isNearBottomRef.current = true;
+    scrollToBottom("auto");
     const t = setTimeout(() => setCompactResult(null), 6000);
     return () => clearTimeout(t);
-  }, [compactResult]);
+  }, [compactResult, scrollToBottom]);
 
   // Pause notice expiry while hovered or focused.
   // The remainingMs/startedAt/oldestId refs implement a true pause-and-resume instead of resetting the 5s timer.

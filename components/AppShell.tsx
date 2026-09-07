@@ -678,9 +678,10 @@ export function AppShell() {
     // active. Updating identity for the exact same cwd is not a user switch.
     if (currentFreshCwd === cwd && currentProject !== newProject) return;
     // Existing sessions stay open when the worktree selector moves within the
-    // same project, or when the selected session already belongs to the target project.
+    // same project. A fresh composer must remount when its effective cwd moves,
+    // otherwise its already-created runtime would keep sending to the old cwd.
     if (
-      (currentProject === newProject || (selectedSession && (selectedSession.projectKey ?? workspaceKeyOf(selectedSession)) === newProject))
+      currentProject === newProject
       && (selectedSession !== null || currentFreshCwd === cwd)
     ) {
       return;

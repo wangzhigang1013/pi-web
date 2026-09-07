@@ -85,7 +85,7 @@ export async function showBrowserNotification(
 ): Promise<NotificationDelivery> {
   const notificationOptions: NotificationOptions = {
     body: options.body,
-    ...(options.tag ? { tag: options.tag } : {}),
+    ...(options.tag ? { tag: options.tag, renotify: true } : {}),
     ...(options.icon ? { icon: options.icon } : {}),
     ...(options.silent !== undefined ? { silent: options.silent } : {}),
   };

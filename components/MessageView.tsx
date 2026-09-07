@@ -900,7 +900,7 @@ export function ThinkingBlock({ block, duration, isStreaming, sessionId, entryId
   const preview = getThinkingPreview(block.thinking);
 
   useEffect(() => {
-    if (!isStreaming || duration !== undefined) {
+    if (!isStreaming || (typeof duration === "number" && duration > 0)) {
       setLiveDuration(null);
       return;
     }
@@ -911,7 +911,12 @@ export function ThinkingBlock({ block, duration, isStreaming, sessionId, entryId
     return () => clearInterval(timer);
   }, [isStreaming, duration]);
 
-  const displayDuration = duration ?? liveDuration;
+  // 严格校验有效正数，杜绝 null / 0 / NaN
+  const displayDuration = typeof duration === "number" && duration > 0
+    ? duration
+    : typeof liveDuration === "number" && liveDuration > 0
+      ? liveDuration
+      : undefined;
 
   // Keep already-mounted blocks in sync when the preference changes.
   useEffect(() => {
@@ -921,9 +926,6 @@ export function ThinkingBlock({ block, duration, isStreaming, sessionId, entryId
   }, []);
 
   // Load deferred history content whenever the block is expanded.
-  // loadThinkingContent() memoizes in-flight promises and drops failed ones
-  // from its cache, so re-running this effect is cheap and a failed load can
-  // be retried by collapsing and expanding the block again.
   useEffect(() => {
     if (!expanded || !block.deferred || content !== null) return;
     if (!sessionId || !entryId) {
@@ -951,91 +953,131 @@ export function ThinkingBlock({ block, duration, isStreaming, sessionId, entryId
     };
   }, [expanded, block.deferred, content, sessionId, entryId, blockIndex]);
 
+  const rawBody = block.deferred ? content : block.thinking;
+  const hasBody = Boolean(rawBody && rawBody.trim());
+
   return (
-    <div style={{
-      display: "flex", alignItems: "flex-start", gap: 6, minWidth: 0,
-      border: "1px solid var(--border)",
-      borderRadius: 7,
-      padding: "6px 10px",
-      background: "var(--bg)",
-      fontFamily: "var(--font-mono)",
-      fontSize: "calc(11px + var(--chat-font-size-offset, 0px))",
-      lineHeight: 1.5,
-    }}>
-      <button
-        type="button"
-        aria-expanded={expanded}
-        aria-label={`${t("i18n.thinking")}${preview ? `: ${preview}` : ""}`}
-        title={t("i18n.thinking")}
-        onClick={() => setExpanded((v) => !v)}
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+        background: "var(--bg)",
+        fontFamily: "var(--font-mono)",
+        fontSize: "calc(11px + var(--chat-font-size-offset, 0px))",
+        lineHeight: 1.5,
+        overflow: "hidden",
+      }}
+    >
+      <div
         style={{
-          display: "inline-flex",
+          display: "flex",
           alignItems: "center",
           gap: 6,
-          width: expanded ? 14 : "100%",
-          flexShrink: expanded ? 0 : 1,
-          minWidth: 0,
-          minHeight: "1.5em",
-          padding: 0,
-          background: "transparent",
-          border: "none",
-          color: "var(--text-muted)",
+          padding: "6px 10px",
           cursor: "pointer",
-          font: "inherit",
-          textAlign: "left",
+          userSelect: "none",
+          background: expanded ? "var(--bg-hover)" : "transparent",
+          transition: "background 0.12s",
         }}
+        onClick={() => setExpanded((v) => !v)}
       >
-        <ThinkingIcon active={expanded} />
-        {!expanded && (
-          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {preview ? <ReactMarkdown allowedElements={[]} unwrapDisallowed skipHtml>{preview}</ReactMarkdown> : "..."}
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-label={`${t("i18n.thinking")}${preview ? `: ${preview}` : ""}`}
+          title={t("i18n.thinking")}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            minWidth: 0,
+            flex: 1,
+            padding: 0,
+            background: "transparent",
+            border: "none",
+            color: "var(--text-muted)",
+            cursor: "pointer",
+            font: "inherit",
+            textAlign: "left",
+          }}
+        >
+          <ThinkingIcon active={expanded} />
+          <span style={{ fontWeight: 600, color: "var(--text)", flexShrink: 0 }}>
+            {t("i18n.thinking")}
+          </span>
+          {!expanded && (
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-dim)", marginLeft: 2 }}>
+              {preview ? (
+                <ReactMarkdown allowedElements={[]} unwrapDisallowed skipHtml>{preview}</ReactMarkdown>
+              ) : isStreaming ? (
+                "正在生成思考过程…"
+              ) : (
+                "..."
+              )}
+            </span>
+          )}
+        </button>
+
+        {displayDuration !== undefined && (
+          <span
+            style={{
+              flexShrink: 0,
+              marginLeft: "auto",
+              padding: "1px 7px",
+              borderRadius: 5,
+              background: isStreaming ? "rgba(56, 189, 248, 0.12)" : "var(--bg-panel)",
+              color: isStreaming ? "var(--accent)" : "var(--text-dim)",
+              border: isStreaming ? "1px solid rgba(56, 189, 248, 0.3)" : "1px solid var(--border)",
+              fontSize: 10.5,
+              fontWeight: 500,
+              fontVariantNumeric: "tabular-nums",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            {isStreaming && (
+              <span
+                style={{
+                  width: 5,
+                  height: 5,
+                  borderRadius: "50%",
+                  background: "var(--accent)",
+                  display: "inline-block",
+                }}
+              />
+            )}
+            {isStreaming ? `思考中 ${displayDuration}s` : `耗时 ${displayDuration}s`}
           </span>
         )}
-      </button>
+      </div>
+
       {expanded && (
         <div
           style={{
-            flex: 1,
-            minWidth: 0,
+            padding: "8px 12px 10px 28px",
+            borderTop: "1px solid var(--border)",
             color: error ? "#f87171" : "var(--text-muted)",
             whiteSpace: "pre-wrap",
             overflowWrap: "anywhere",
+            fontSize: "calc(11.5px + var(--chat-font-size-offset, 0px))",
+            lineHeight: 1.6,
           }}
         >
-           {loading ? t("i18n.loadingThinking") : error ?? (block.deferred ? content : block.thinking)}
-        </div>
-      )}
-      {displayDuration !== undefined && (
-        <span
-          style={{
-            flexShrink: 0,
-            marginLeft: "auto",
-            padding: "1px 7px",
-            borderRadius: 5,
-            background: isStreaming ? "rgba(56, 189, 248, 0.12)" : "var(--bg-hover)",
-            color: isStreaming ? "var(--accent)" : "var(--text-dim)",
-            border: isStreaming ? "1px solid rgba(56, 189, 248, 0.3)" : "1px solid var(--border)",
-            fontSize: 10.5,
-            fontWeight: 500,
-            fontVariantNumeric: "tabular-nums",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-          }}
-        >
-          {isStreaming && (
-            <span
-              style={{
-                width: 5,
-                height: 5,
-                borderRadius: "50%",
-                background: "var(--accent)",
-                display: "inline-block",
-              }}
-            />
+          {loading ? (
+            t("i18n.loadingThinking")
+          ) : error ? (
+            error
+          ) : hasBody ? (
+            rawBody
+          ) : isStreaming ? (
+            "正在思考推演中…"
+          ) : (
+            "（该轮次模型未输出详细思考内容）"
           )}
-          {isStreaming ? `思考中 ${displayDuration}s` : `耗时 ${displayDuration}s`}
-        </span>
+        </div>
       )}
     </div>
   );

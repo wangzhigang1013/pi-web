@@ -735,7 +735,7 @@ export function AppShell() {
     }
     activeNewSessionDraftKeyRef.current = null;
     // Adopt an explicitly selected session before the sidebar reports its cwd.
-    const projectKey = workspaceKeyOf(session);
+    const projectKey = session.projectKey ?? workspaceKeyOf(session);
     if (activeProjectKeyRef.current !== projectKey) {
       setFileTabs([]);
       if (!activeFileTabId || activeFileTabId.startsWith("file:")) {
@@ -757,17 +757,10 @@ export function AppShell() {
         return;
       }
     }
-    const sessionProjectKey = session.projectKey ?? workspaceKeyOf(session);
-    const previousProjectKey = activeProjectKeyRef.current
-      ?? (selectedSession ? workspaceKeyOf(selectedSession) : null);
-    if (previousProjectKey && previousProjectKey !== sessionProjectKey) {
-      setFileTabs([]);
-      setActiveFileTabId(null);
-      setRightPanelOpen(false);
+    setLastOpenSession(projectKey, session.id);
+    if (isRestore) {
+      suppressCwdBumpRef.current = true;
     }
-    activeProjectKeyRef.current = sessionProjectKey;
-    setLastOpenSession(sessionProjectKey, session.id);
-    suppressCwdBumpRef.current = true;
     setNewSessionCwd(null);
     setSelectedSession(session);
     setSessionKey((k) => k + 1);
@@ -2684,7 +2677,7 @@ export function AppShell() {
               gitRefreshKey={explorerRefreshKey}
               initialDisplayMode={activeFileTab.initialDisplayMode}
               initialState={activeFileTab.viewerState}
-              watchEnabled={rightPanelOpen && rightPanelTab === "files" /* watchEnabled={rightPanelOpen} */}
+              watchEnabled={rightPanelOpen}
               onStateChange={(viewerState) => handleFileViewerStateChange(
                 activeFileTab.id,
                 activeFileTab.viewerRevision ?? 0,
@@ -2714,15 +2707,14 @@ export function AppShell() {
               />
             </div>
           ))}
-        </div>
-
-        {/* Terminal view (always kept in DOM to prevent process and scroll loss) */}
-        <div style={{ flex: 1, overflow: "hidden", display: rightPanelTab === "terminal" ? "flex" : "none", flexDirection: "column", paddingBottom: "env(safe-area-inset-bottom)" }}>
-          <WebTerminal
-            sessionId={selectedSession?.id ?? "global"}
-            cwd={activeCwd ?? undefined}
-            isActive={rightPanelOpen && rightPanelTab === "terminal"}
-          />
+          {/* Terminal view (always kept in DOM to prevent process and scroll loss) */}
+          <div style={{ width: "100%", height: "100%", overflow: "hidden", display: rightPanelTab === "terminal" ? "flex" : "none", flexDirection: "column" }}>
+            <WebTerminal
+              sessionId={selectedSession?.id ?? "global"}
+              cwd={activeCwd ?? undefined}
+              isActive={rightPanelOpen && rightPanelTab === "terminal"}
+            />
+          </div>
         </div>
       </div>
     </div>

@@ -435,7 +435,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // Codex / Z Code folder tree state
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => loadCollapsedFolders());
   const [pinnedWorkspaces, setPinnedWorkspaces] = useState<PinnedWorkspace[]>(() => loadPinnedWorkspaces());
-  const [sessionSearchQuery, setSessionSearchQuery] = useState("");
   const [workspaceOrder, setWorkspaceOrder] = useState<string[]>(() => loadWorkspaceOrder());
   const [archivedSessionIds, setArchivedSessionIds] = useState<Set<string>>(() => loadArchivedSessionIds());
   const [expandedArchivedFolders, setExpandedArchivedFolders] = useState<Set<string>>(() => new Set());
@@ -1149,40 +1148,32 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               onClick={() => loadSessions(false, true)}
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center",
-                background: sessionRefreshDone ? "rgba(74,222,128,0.18)" : "var(--bg-hover)",
-                border: sessionRefreshDone ? "1px solid rgba(74,222,128,0.4)" : "1px solid var(--border)",
-                color: sessionRefreshDone ? "#4ade80" : "var(--text-muted)",
+                background: "var(--bg-hover)",
+                border: "1px solid var(--border)",
+                color: "var(--text-muted)",
                 cursor: "pointer",
                 width: 30, height: 30,
                 borderRadius: 7,
                 padding: 0,
                 flexShrink: 0,
-                transition: "background 0.3s, color 0.3s, border-color 0.3s",
+                transition: "background 0.2s, color 0.2s, border-color 0.2s",
               }}
               onMouseEnter={(e) => {
-                if (sessionRefreshDone) return;
                 e.currentTarget.style.background = "var(--bg-selected)";
                 e.currentTarget.style.color = "var(--accent)";
                 e.currentTarget.style.borderColor = "rgba(37,99,235,0.35)";
               }}
               onMouseLeave={(e) => {
-                if (sessionRefreshDone) return;
                 e.currentTarget.style.background = "var(--bg-hover)";
                 e.currentTarget.style.color = "var(--text-muted)";
                 e.currentTarget.style.borderColor = "var(--border)";
               }}
-              title={t("sidebar.refresh")}
+              title="重新加载"
             >
-              {sessionRefreshDone ? (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              ) : (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                  <path d="M3 3v5h5" />
-                </svg>
-              )}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                <path d="M3 3v5h5" />
+              </svg>
             </button>
           </div>
         </div>
@@ -1618,8 +1609,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       {/* Session list */}
       <SessionSearch open={sessionSearchOpen} query={sessionSearchQuery} refreshKey={sessionListVersion} selectedSessionId={selectedSessionId} onSelectSession={handleSelectSessionFromList}>
       <div
-        ref={listScrollRef}
-        onScroll={handleListScroll}
         style={{ flex: explorerOpen && (selectedCwdProp || selectedCwd) ? "1 1 0" : "1 1 auto", overflowY: "auto", padding: "0", minHeight: 80 }}
       >
         {loading && (

@@ -36,6 +36,7 @@ import {
   ConfigSplitView,
 } from "./SettingsUi";
 import { ProviderIcon } from "./ProviderIcon";
+import { AntigravityDetail } from "./AntigravityDetail";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1986,6 +1987,9 @@ export function ModelsConfig({ onClose, embedded = false }: { onClose: () => voi
     if (selection.type === "oauth") {
       const p = oauthProviders.find((p) => p.id === selection.providerId);
       if (!p) return null;
+      if (p.id === "antigravity") {
+        return <AntigravityDetail key={p.id} onRefreshParent={refreshAuthProviders} />;
+      }
       return <OAuthDetail key={p.id} provider={p} onRefresh={refreshAuthProviders} />;
     }
     if (selection.type === "apikey") {

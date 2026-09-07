@@ -130,6 +130,15 @@ export function AppShell() {
   const [sessionKey, setSessionKey] = useState(0);
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
   const [settingsSection, setSettingsSection] = useState<SettingsSection | null>(null);
+
+  useEffect(() => {
+    const handleOpenSettings = (e: Event) => {
+      const custom = e as CustomEvent<{ section?: SettingsSection }>;
+      setSettingsSection(custom.detail?.section || "models");
+    };
+    window.addEventListener("open-settings", handleOpenSettings);
+    return () => window.removeEventListener("open-settings", handleOpenSettings);
+  }, []);
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [projectTrust, setProjectTrust] = useState<ProjectTrustStatus | null>(null);
   const [projectTrustDialogOpen, setProjectTrustDialogOpen] = useState(false);

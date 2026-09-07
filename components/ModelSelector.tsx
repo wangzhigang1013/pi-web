@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { setLastSettingsSelection } from "@/lib/settings-navigation";
 
 export interface ModelSelectorOption {
   provider: string;
@@ -288,9 +289,49 @@ export function ModelSelector({
                 </div>
               ) : modelsByProvider.map((group, index) => (
                 <div key={group.provider}>
-                  {modelsByProvider.length > 1 && (
-                    <div style={{ padding: "6px 12px 4px", borderTop: index > 0 || onClear ? "1px solid var(--border)" : "none", color: "var(--text-dim)", fontSize: 10, fontWeight: 600, letterSpacing: 0, textTransform: "uppercase" }}>
-                      {group.provider}
+                  {(modelsByProvider.length > 1 || group.provider.toLowerCase() === "antigravity") && (
+                    <div
+                      style={{
+                        padding: "6px 12px 4px",
+                        borderTop: index > 0 || onClear || (modelsByProvider.length === 1 && group.provider.toLowerCase() === "antigravity") ? "1px solid var(--border)" : "none",
+                        color: "var(--text-dim)",
+                        fontSize: 10,
+                        fontWeight: 600,
+                        letterSpacing: 0,
+                        textTransform: "uppercase",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <span>{group.provider}</span>
+                      {group.provider.toLowerCase() === "antigravity" && (
+                        <button
+                          type="button"
+                          title="管理 Antigravity 多账号与配额（独立控制面板）"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpen(false);
+                            setLastSettingsSelection("models", JSON.stringify({ type: "oauth", providerId: "antigravity" }));
+                            window.dispatchEvent(new CustomEvent("open-settings", { detail: { section: "antigravity" } }));
+                          }}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "#3b82f6",
+                            cursor: "pointer",
+                            fontSize: 10,
+                            fontWeight: 600,
+                            padding: "1px 4px",
+                            borderRadius: 3,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 3,
+                          }}
+                        >
+                          ⚡ 账号管理
+                        </button>
+                      )}
                     </div>
                   )}
                   {group.options.map((option) => (

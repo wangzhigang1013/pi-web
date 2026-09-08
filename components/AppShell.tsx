@@ -9,6 +9,7 @@ import type { ChatScrollPosition } from "@/lib/chat-scroll-position";
 import { FileViewer } from "./FileViewer";
 import { WebTerminal } from "./terminal/WebTerminal";
 import { CloudSyncButton } from "./CloudSyncButton";
+import { BgTasksButton } from "./BgTasksButton";
 import { TabBar, type Tab } from "./TabBar";
 import { openFileTab, saveFileViewerState } from "./file-tab-state";
 import { SettingsPanel, SettingsSectionIcon } from "./SettingsPanel";
@@ -1679,6 +1680,7 @@ export function AppShell() {
         {mobile && renderThemeButton(true)}
         {mobile && renderLanguageButton(true)}
         {mobile && <CloudSyncButton iconButtonSize={TOP_BAR_ICON_BUTTON_SIZE} />}
+        {mobile && <BgTasksButton iconButtonSize={TOP_BAR_ICON_BUTTON_SIZE} />}
       </div>
     );
   };
@@ -2162,6 +2164,7 @@ export function AppShell() {
               {renderThemeButton(false)}
               {renderLanguageButton(false)}
               <CloudSyncButton iconButtonSize={TOP_BAR_ICON_BUTTON_SIZE} />
+              <BgTasksButton iconButtonSize={TOP_BAR_ICON_BUTTON_SIZE} />
               {renderProjectTrustWarning(false)}
               {renderChatToolbarActions(false)}
               {renderSessionStatsButton(false)}

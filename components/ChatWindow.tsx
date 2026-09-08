@@ -460,6 +460,20 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     registerAbortHandler(sessionBusy ? handleAbort : null);
   }, [sessionBusy, handleAbort]);
 
+  const handleStopBashCommand = useCallback(async () => {
+    const sid = session?.id || sessionIdRef.current;
+    if (!sid) return;
+    try {
+      await fetch("/api/background-tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "abortBash", sessionId: sid }),
+      });
+    } catch {
+      // best-effort
+    }
+  }, [session?.id, sessionIdRef]);
+
   // --- Lazy-load historical messages ---
   // Only render the last N messages initially. When the user scrolls to the
   // top, load another page while keeping the scroll position stable.
@@ -1220,8 +1234,31 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             )}
 
             {bashRunning && !pendingBash && (
-              <div className="py-2 text-[13px] text-text-muted">
+              <div className="py-2 text-[13px] text-text-muted flex items-center gap-3">
                  <span className="animate-[pulse_1.5s_infinite]">{t("chat.runningCommand")}</span>
+                 <button
+                   type="button"
+                   onClick={handleStopBashCommand}
+                   title="单独停止当前命令子进程（不中断整轮对话）"
+                   style={{
+                     fontSize: 11,
+                     padding: "2px 8px",
+                     borderRadius: 5,
+                     background: "rgba(239, 68, 68, 0.12)",
+                     border: "1px solid rgba(239, 68, 68, 0.28)",
+                     color: "#ef4444",
+                     cursor: "pointer",
+                     display: "inline-flex",
+                     alignItems: "center",
+                     gap: 4,
+                     fontWeight: 500,
+                   }}
+                 >
+                   <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor">
+                     <rect x="4" y="4" width="16" height="16" rx="2" />
+                   </svg>
+                   仅停止命令
+                 </button>
               </div>
             )}
 

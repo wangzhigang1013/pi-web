@@ -7,6 +7,7 @@ import {
   type LoadExtensionsResult,
 } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
+import { backgroundTasks } from "./background-tasks";
 
 const HOST_EXTENSION_NAME = "pi-web-project-command-environment";
 const HOST_EXTENSION_PATH = `<inline:${HOST_EXTENSION_NAME}>`;
@@ -95,14 +96,35 @@ export function createProjectCommandBashExtension(options: {
       const displayDefinition = createBashToolDefinition(options.cwd);
       pi.registerTool({
         ...displayDefinition,
-        execute(toolCallId, params, signal, onUpdate, context) {
+        async execute(toolCallId, params, signal, onUpdate, context) {
+          const sessionId = (context as any)?.session?.id || options.cwd;
+          const ac = new AbortController();
+          const unregister = backgroundTasks.registerBashController(sessionId, ac);
+
+          // 记录 bash 执行前的端口快照
+          try {
+            await backgroundTasks.snapshotBefore(sessionId);
+          } catch {
+            // best-effort
+          }
+
           const executionDefinition = createBashToolDefinition(options.cwd, {
             commandPrefix: options.settings.getShellCommandPrefix(),
             operations: createProjectCommandBashOperations({
               shellPath: options.settings.getShellPath(),
             }),
           });
-          return executionDefinition.execute(toolCallId, params, signal, onUpdate, context);
+
+          // 组合会话主 signal 与单独中止命令的 ac.signal
+          const combinedSignal = signal ? AbortSignal.any([signal, ac.signal]) : ac.signal;
+
+          try {
+            return await executionDefinition.execute(toolCallId, params, combinedSignal, onUpdate, context);
+          } finally {
+            unregister();
+            // 异步追踪新拉起的后台端口服务
+            void backgroundTasks.trackAfter(sessionId).catch(() => {});
+          }
         },
       });
     },

@@ -1829,7 +1829,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                     )}
                   </div>
                   {!isCollapsed && (
-                    <div style={{ display: "flex", flexDirection: "column" }}>
+                    <div style={{ display: "flex", flexDirection: "column", marginLeft: 15, paddingLeft: 2, borderLeft: "1px solid color-mix(in srgb, var(--border) 60%, transparent)" }}>
                       {group.families.length === 0 && group.archivedFamilies.length === 0 ? (
                         <div style={{ padding: "6px 14px 8px 28px", fontSize: 11, color: "var(--text-dim)" }}>
                           <button
@@ -1964,7 +1964,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                   </span>
                 </div>
                 {!collapsedFolders.has("__unclassified__") && (
-                  <div style={{ display: "flex", flexDirection: "column" }}>
+                  <div style={{ display: "flex", flexDirection: "column", marginLeft: 15, paddingLeft: 2, borderLeft: "1px solid color-mix(in srgb, var(--border) 60%, transparent)" }}>
                     {treeStructure.unclassifiedGroup.families.map((family) => {
                       const familySessions = [family.root, ...family.subagents];
                       const displaySession = family.latestModified === family.root.modified
@@ -2462,18 +2462,18 @@ function SessionItem({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => { setHovered(false); }}
       style={{
-        height: 33,
+        height: 31,
         display: "flex",
         alignItems: "center",
-        paddingLeft: depth > 0 ? (depth > 1 ? 26 : 16) : 10,
+        paddingLeft: depth > 1 ? 16 : 6,
         paddingRight: 8,
-        margin: "1px 6px",
+        margin: "1px 4px",
         borderRadius: 6,
         cursor: confirmDelete || renaming ? "default" : "pointer",
         background: confirmDelete
           ? "rgba(239,68,68,0.06)"
           : isSelected
-            ? "color-mix(in srgb, var(--accent) 9.5%, var(--bg))"
+            ? "color-mix(in srgb, var(--accent) 12%, var(--bg))"
             : hovered
               ? "var(--bg-hover)"
               : "transparent",
@@ -2482,13 +2482,8 @@ function SessionItem({
           : isSelected
             ? "1px solid color-mix(in srgb, var(--accent) 26%, transparent)"
             : "1px solid transparent",
-        borderLeft: confirmDelete
-          ? "3px solid #ef4444"
-          : isSelected
-            ? "3px solid var(--accent)"
-            : "1px solid transparent",
-        boxShadow: isSelected ? "0 1px 3px rgba(0,0,0,0.03)" : "none",
-        transition: "background 0.12s, border-color 0.12s",
+        boxShadow: isSelected ? "0 1px 2px rgba(0,0,0,0.02)" : "none",
+        transition: "background 0.1s, border-color 0.1s",
         opacity: deleting ? 0.5 : 1,
         gap: 6,
         overflow: "hidden",
@@ -2582,19 +2577,30 @@ function SessionItem({
                 <rect x="5" y="7" width="14" height="11" rx="2" />
                 <path d="M9 11h.01M15 11h.01M9 15h6M12 7V4M10 4h4" />
               </svg>
+            ) : isSelected ? (
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  background: "var(--accent)",
+                  boxShadow: "0 0 6px var(--accent)",
+                  display: "inline-block",
+                }}
+              />
             ) : (
               <svg
-                width="11.5"
-                height="11.5"
+                width="11"
+                height="11"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
-                strokeWidth="1.8"
+                strokeWidth="1.6"
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 style={{
-                  color: isSelected ? "var(--accent)" : "var(--text-dim)",
-                  opacity: isSelected ? 0.95 : 0.45,
+                  color: "var(--text-dim)",
+                  opacity: 0.4,
                 }}
               >
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -2610,7 +2616,7 @@ function SessionItem({
               overflow: "hidden",
               textOverflow: "clip",
               whiteSpace: "nowrap",
-              fontSize: 12.5,
+              fontSize: 12,
               fontWeight: isSelected ? 600 : 400,
               color: isSelected ? "var(--text)" : "var(--text-muted)",
               lineHeight: 1.3,

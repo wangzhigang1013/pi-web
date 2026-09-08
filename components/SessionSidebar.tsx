@@ -2462,19 +2462,33 @@ function SessionItem({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => { setHovered(false); }}
       style={{
-        height: 34,
+        height: 33,
         display: "flex",
         alignItems: "center",
-        paddingLeft: depth > 0 ? (depth > 1 ? 30 : 20) : 12,
+        paddingLeft: depth > 0 ? (depth > 1 ? 26 : 16) : 10,
         paddingRight: 8,
+        margin: "1px 6px",
+        borderRadius: 6,
         cursor: confirmDelete || renaming ? "default" : "pointer",
         background: confirmDelete
           ? "rgba(239,68,68,0.06)"
-          : isSelected ? "var(--bg-selected)" : hovered ? "var(--bg-hover)" : "transparent",
+          : isSelected
+            ? "color-mix(in srgb, var(--accent) 9.5%, var(--bg))"
+            : hovered
+              ? "var(--bg-hover)"
+              : "transparent",
+        border: confirmDelete
+          ? "1px solid rgba(239,68,68,0.25)"
+          : isSelected
+            ? "1px solid color-mix(in srgb, var(--accent) 26%, transparent)"
+            : "1px solid transparent",
         borderLeft: confirmDelete
-          ? "2px solid #ef4444"
-          : isSelected ? "2px solid var(--accent)" : "2px solid transparent",
-        transition: "background 0.1s",
+          ? "3px solid #ef4444"
+          : isSelected
+            ? "3px solid var(--accent)"
+            : "1px solid transparent",
+        boxShadow: isSelected ? "0 1px 3px rgba(0,0,0,0.03)" : "none",
+        transition: "background 0.12s, border-color 0.12s",
         opacity: deleting ? 0.5 : 1,
         gap: 6,
         overflow: "hidden",
@@ -2568,7 +2582,24 @@ function SessionItem({
                 <rect x="5" y="7" width="14" height="11" rx="2" />
                 <path d="M9 11h.01M15 11h.01M9 15h6M12 7V4M10 4h4" />
               </svg>
-            ) : null}
+            ) : (
+              <svg
+                width="11.5"
+                height="11.5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{
+                  color: isSelected ? "var(--accent)" : "var(--text-dim)",
+                  opacity: isSelected ? 0.95 : 0.45,
+                }}
+              >
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+            )}
           </div>
 
           {/* 会话标题（单行渐变遮罩） */}

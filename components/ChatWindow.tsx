@@ -1411,99 +1411,100 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
         )}
         {/* 上下文压缩专属动态指示栏 */}
         {isCompacting && (
-          <div
-            style={{
-              margin: "8px 16px 0",
-              padding: "10px 14px",
-              borderRadius: 10,
-              background: "color-mix(in srgb, #f59e0b 8%, var(--bg-panel))",
-              border: "1px solid rgba(245, 158, 11, 0.3)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
-              animation: "fadeIn 0.2s ease",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-              <div
+          <div style={{ maxWidth: "var(--chat-content-max-width, 820px)", width: "100%", margin: "0 auto", padding: "8px 16px 0", boxSizing: "border-box" }}>
+            <div
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                background: "color-mix(in srgb, #f59e0b 8%, var(--bg-panel))",
+                border: "1px solid rgba(245, 158, 11, 0.3)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                animation: "fadeIn 0.2s ease",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <div
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 7,
+                    background: "rgba(245, 158, 11, 0.16)",
+                    color: "#f59e0b",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ animation: "spin 2s linear infinite" }}
+                  >
+                    <polyline points="4 14 10 14 10 20" />
+                    <polyline points="20 10 14 10 14 4" />
+                    <line x1="14" y1="10" x2="21" y2="3" />
+                    <line x1="3" y1="21" x2="10" y2="14" />
+                  </svg>
+                </div>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
+                      正在压缩历史上下文
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 10.5,
+                        padding: "1px 6px",
+                        borderRadius: 5,
+                        background: "rgba(245, 158, 11, 0.15)",
+                        color: "#f59e0b",
+                        fontWeight: 600,
+                      }}
+                    >
+                      释放窗口
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>
+                    会话长度已达自动压缩门槛，AI 正在提炼前文摘要，稍后将自动继续当前任务
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleAbortCompaction}
                 style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 7,
-                  background: "rgba(245, 158, 11, 0.16)",
-                  color: "#f59e0b",
-                  display: "flex",
+                  display: "inline-flex",
                   alignItems: "center",
-                  justifyContent: "center",
+                  gap: 5,
+                  padding: "5px 10px",
+                  borderRadius: 6,
+                  background: "rgba(239, 68, 68, 0.1)",
+                  border: "1px solid rgba(239, 68, 68, 0.25)",
+                  color: "#ef4444",
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                  cursor: "pointer",
                   flexShrink: 0,
                 }}
+                title="停止本次压缩，直接返回对话"
               >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{ animation: "spin 2s linear infinite" }}
-                >
-                  <polyline points="4 14 10 14 10 20" />
-                  <polyline points="20 10 14 10 14 4" />
-                  <line x1="14" y1="10" x2="21" y2="3" />
-                  <line x1="3" y1="21" x2="10" y2="14" />
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="4" y="4" width="16" height="16" rx="2" />
                 </svg>
-              </div>
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
-                    正在压缩历史上下文
-                  </span>
-                  <span
-                    style={{
-                      fontSize: 10.5,
-                      padding: "1px 6px",
-                      borderRadius: 5,
-                      background: "rgba(245, 158, 11, 0.15)",
-                      color: "#f59e0b",
-                      fontWeight: 600,
-                    }}
-                  >
-                    释放窗口
-                  </span>
-                </div>
-                <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>
-                  会话长度已达自动压缩门槛，AI 正在提炼前文摘要，稍后将自动继续当前任务
-                </div>
-              </div>
+                停止压缩
+              </button>
             </div>
-
-            <button
-              type="button"
-              onClick={handleAbortCompaction}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 5,
-                padding: "5px 10px",
-                borderRadius: 6,
-                background: "rgba(239, 68, 68, 0.1)",
-                border: "1px solid rgba(239, 68, 68, 0.25)",
-                color: "#ef4444",
-                fontSize: 11.5,
-                fontWeight: 600,
-                cursor: "pointer",
-                flexShrink: 0,
-              }}
-              title="停止本次压缩，直接返回对话"
-            >
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="4" y="4" width="16" height="16" rx="2" />
-              </svg>
-              停止压缩
-            </button>
           </div>
         )}
         {chatInputElement}

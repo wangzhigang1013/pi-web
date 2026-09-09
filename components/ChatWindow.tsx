@@ -12,7 +12,6 @@ import { MessageView } from "./MessageView";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { ExtensionStatusBar } from "./ExtensionStatusBar";
-import { FloatingTaskDock } from "./FloatingTaskDock";
 import { AnsiText } from "./AnsiText";
 import { useI18n } from "@/hooks/useI18n";
 import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
@@ -881,19 +880,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     promptAnchorUpdateRef.current?.();
   }, [streamState.streamingMessage]);
 
-  const isTodoKey = (key: string) => {
-    const lower = key.toLowerCase();
-    return lower === "rpiv-todos" || lower.includes("todo") || lower.includes("task");
-  };
-  const nonTodoWidgets = useMemo(
-    () => extensionWidgets.filter((w) => !isTodoKey(w.key)),
-    [extensionWidgets],
-  );
-  const nonTodoStatuses = useMemo(
-    () => extensionStatuses.filter((s) => !isTodoKey(s.key)),
-    [extensionStatuses],
-  );
-
   const availableThinkingLevels = displayModelValue
     ? (modelThinkingLevels[`${displayModelValue.provider}:${displayModelValue.modelId}`] ?? null)
     : null;
@@ -1508,9 +1494,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
           </div>
         )}
         {chatInputElement}
-        <ExtensionStatusBar statuses={nonTodoStatuses} widgets={nonTodoWidgets} />
+        <ExtensionStatusBar statuses={extensionStatuses} widgets={extensionWidgets} />
       </div>
-      <FloatingTaskDock widgets={extensionWidgets} statuses={extensionStatuses} messages={messages} />
       {isEmptyNew && <div className="min-h-0 flex-1" />}
     </div>
   );

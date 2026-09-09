@@ -20,12 +20,39 @@ test("renders null when there are no todo widgets or tasks", () => {
   assert.equal(html, "");
 });
 
-test("renders floating task board when rpiv-todos widget is present", () => {
+test("renders floating task board for rpiv-todos format", () => {
   const html = renderToStaticMarkup(
     React.createElement(FloatingTaskDock, {
       widgets: [
         {
           key: "rpiv-todos",
+          lines: [
+            "● Todos (2/4)",
+            "├─ ✓ #1 调研现有工具",
+            "├─ ✓ #2 编写单元测试",
+            "├─ ◐ #3 运行测试回归 (writing tests...)",
+            "└─ ○ #4 提交代码并验证",
+          ],
+        },
+      ],
+      statuses: [],
+    }),
+  );
+
+  assert.ok(html.includes("任务进度看板"));
+  assert.ok(html.includes("2/4"));
+  assert.ok(html.includes("调研现有工具"));
+  assert.ok(html.includes("编写单元测试"));
+  assert.ok(html.includes("运行测试回归"));
+  assert.ok(html.includes("writing tests..."));
+});
+
+test("renders floating task board for bracket format", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(FloatingTaskDock, {
+      widgets: [
+        {
+          key: "todo",
           lines: [
             "● Todos (2/4)",
             "[x] 1. Initial research",

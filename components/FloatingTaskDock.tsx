@@ -2,12 +2,66 @@
 
 import { useState, useMemo } from "react";
 import type { ExtensionWidgetItem, ExtensionStatusItem } from "@/lib/types";
-import { AnsiText } from "./AnsiText";
 import { stripAnsi } from "@/lib/ansi";
 
 interface FloatingTaskDockProps {
   widgets: ExtensionWidgetItem[];
   statuses?: ExtensionStatusItem[];
+}
+
+export interface StructuredTask {
+  id: number | string;
+  status: "completed" | "in_progress" | "pending";
+  title: string;
+  activeForm?: string;
+  originalIndex: number;
+}
+
+function parseTaskLine(rawLine: string, index: number): StructuredTask | null {
+  const plain = stripAnsi(rawLine).trim();
+  if (!plain) return null;
+  // 过滤 rpiv-todos 标题行（如 "● Todos (2/4)"）
+  if (plain.includes("Todos") || plain.includes("任务看板")) return null;
+
+  let status: "completed" | "in_progress" | "pending" = "pending";
+  let content = plain;
+
+  if (/^\[x\]/i.test(plain) || /^✔/.test(plain) || /已完成/.test(plain)) {
+    status = "completed";
+    content = plain.replace(/^(\[x\]|✔)\s*/i, "");
+  } else if (/^\[>\]/i.test(plain) || /^\[●\]/i.test(plain) || /^⏳/.test(plain) || /进行中/.test(plain)) {
+    status = "in_progress";
+    content = plain.replace(/^(\[>\]|\[●\]|⏳)\s*/i, "");
+  } else if (/^\[\s*\]/i.test(plain) || /^○/.test(plain)) {
+    status = "pending";
+    content = plain.replace(/^(\[\s*\]|○)\s*/, "");
+  } else {
+    if (!/^\d+[\.\)]/.test(plain)) return null;
+  }
+
+  // 提取序号（如 "1. Initial research"）
+  const numMatch = content.match(/^(\d+)[\.\)]\s*(.*)/);
+  let id: number | string = index;
+  if (numMatch) {
+    id = numMatch[1];
+    content = numMatch[2];
+  }
+
+  // 提取 activeForm（如 "(writing tests...)"）
+  let activeForm: string | undefined;
+  const activeMatch = content.match(/\(([^)]+)\)$/);
+  if (activeMatch && status === "in_progress") {
+    activeForm = activeMatch[1];
+    content = content.replace(/\s*\([^)]+\)$/, "");
+  }
+
+  return {
+    id,
+    status,
+    title: content.trim(),
+    activeForm,
+    originalIndex: index,
+  };
 }
 
 export function FloatingTaskDock({ widgets, statuses = [] }: FloatingTaskDockProps) {
@@ -32,83 +86,77 @@ export function FloatingTaskDock({ widgets, statuses = [] }: FloatingTaskDockPro
     );
   }, [statuses]);
 
-  // 解析当前任务的统计数据与活跃项
-  const taskStats = useMemo(() => {
+  // 解析任务列表与统计
+  const taskData = useMemo(() => {
     if (!todoWidget && !todoStatus) return null;
     const lines = todoWidget?.lines ?? (todoStatus ? [todoStatus.text] : []);
     if (lines.length === 0) return null;
 
-    let completed = 0;
-    let inProgress = 0;
-    let pending = 0;
-    let total = 0;
-    let activeTitle: string | null = null;
-
-    // 优先从标题行正则抓取例如 (2/5) 或 2 of 5
     const fullText = lines.map((l) => stripAnsi(l)).join("\n");
     const countMatch = fullText.match(/\((\d+)\s*[/／]\s*(\d+)\)/);
-    if (countMatch) {
-      completed = parseInt(countMatch[1], 10);
-      total = parseInt(countMatch[2], 10);
-    }
 
-    // 逐行解析任务状态与活跃项
-    for (const raw of lines) {
-      const plain = stripAnsi(raw).trim();
-      if (!plain) continue;
+    const parsedTasks: StructuredTask[] = [];
+    lines.forEach((line, idx) => {
+      const task = parseTaskLine(line, idx);
+      if (task) parsedTasks.push(task);
+    });
 
-      // 匹配 [x] 或 ✔ 已完成
-      if (/^\[x\]/i.test(plain) || /^✔/i.test(plain) || /已完成/.test(plain)) {
-        if (!countMatch) completed++;
-      }
-      // 匹配 [>] 或 [●] 或 ⏳ 或 进行中
-      else if (/^\[>\]/i.test(plain) || /^\[●\]/i.test(plain) || /^⏳/.test(plain) || /进行中/.test(plain) || /in_progress/i.test(plain)) {
-        inProgress++;
-        if (!activeTitle) {
-          activeTitle = plain.replace(/^(\[>\]|\[●\]|⏳)\s*/, "").slice(0, 24);
-        }
-      }
-      // 匹配 [ ] 待办
-      else if (/^\[\s*\]/i.test(plain) || /^○/i.test(plain)) {
-        pending++;
-      }
-    }
+    if (parsedTasks.length === 0) return null;
 
-    const calculatedTotal = countMatch ? total : (completed + inProgress + pending);
-    const percent = calculatedTotal > 0 ? Math.round((completed / calculatedTotal) * 100) : 0;
+    const completed = countMatch
+      ? parseInt(countMatch[1], 10)
+      : parsedTasks.filter((t) => t.status === "completed").length;
+    const inProgress = parsedTasks.filter((t) => t.status === "in_progress").length;
+    const total = countMatch ? parseInt(countMatch[2], 10) : parsedTasks.length;
+    const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+    const activeTask = parsedTasks.find((t) => t.status === "in_progress");
+
+    // 按照任务执行生命周期顺序展开：
+    // 已完成的任务（按完成流水从上到下）-> 当前进行中的任务 -> 待办任务
+    // 这样向下展开时，视线清晰顺畅，清楚看到推进到了哪一步
+    const sortedTasks = [...parsedTasks].sort((a, b) => {
+      const order = { in_progress: 0, pending: 1, completed: 2 };
+      // 保持同状态下的原有顺序
+      if (order[a.status] !== order[b.status]) {
+        return order[a.status] - order[b.status];
+      }
+      return a.originalIndex - b.originalIndex;
+    });
+
     return {
-      lines,
+      tasks: sortedTasks,
       completed,
-      total: calculatedTotal,
+      total,
       inProgress,
       percent,
-      activeTitle: activeTitle || (inProgress > 0 ? "任务推进中…" : null),
+      activeTitle: activeTask?.activeForm || activeTask?.title || null,
     };
   }, [todoWidget, todoStatus]);
 
-  if (!taskStats || taskStats.lines.length === 0) {
+  if (!taskData || taskData.tasks.length === 0) {
     return null;
   }
 
-  const { completed, total, inProgress, percent, activeTitle, lines } = taskStats;
+  const { tasks, completed, total, inProgress, percent, activeTitle } = taskData;
   const isAllDone = total > 0 && completed === total;
 
   return (
     <aside
       aria-label="任务进度看板"
       style={{
-        position: "fixed",
-        top: 76,
-        right: 20,
+        position: "absolute",
+        top: 16,
+        left: 20,
         zIndex: 40,
         display: "flex",
         flexDirection: "column",
-        alignItems: "flex-end",
+        alignItems: "flex-start",
         pointerEvents: "auto",
         maxWidth: "calc(100vw - 40px)",
       }}
     >
-      {/* 紧凑状态：悬浮胶囊 */}
+      {/* 紧凑状态：悬浮药丸胶囊（吸附在左侧会话区边缘） */}
       {collapsed ? (
         <button
           type="button"
@@ -121,9 +169,9 @@ export function FloatingTaskDock({ widgets, statuses = [] }: FloatingTaskDockPro
             height: 34,
             padding: "0 12px 0 10px",
             borderRadius: 9999,
-            background: "color-mix(in srgb, var(--bg) 88%, transparent)",
-            backdropFilter: "blur(12px)",
-            WebkitBackdropFilter: "blur(12px)",
+            background: "color-mix(in srgb, var(--bg) 90%, transparent)",
+            backdropFilter: "blur(14px)",
+            WebkitBackdropFilter: "blur(14px)",
             border: isAllDone
               ? "1px solid rgba(16, 185, 129, 0.35)"
               : inProgress > 0
@@ -190,23 +238,23 @@ export function FloatingTaskDock({ widgets, statuses = [] }: FloatingTaskDockPro
           </svg>
         </button>
       ) : (
-        /* 展开状态：精致毛玻璃任务看板卡片 */
+        /* 展开状态：位于左侧的精致任务看板卡片，绝不遮挡右侧文件查看器 */
         <div
           style={{
             width: 320,
             borderRadius: 12,
-            background: "color-mix(in srgb, var(--bg) 90%, transparent)",
-            backdropFilter: "blur(14px)",
-            WebkitBackdropFilter: "blur(14px)",
+            background: "color-mix(in srgb, var(--bg) 92%, transparent)",
+            backdropFilter: "blur(16px)",
+            WebkitBackdropFilter: "blur(16px)",
             border: "1px solid var(--border)",
-            boxShadow: "0 12px 36px -4px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0,0,0,0.08)",
+            boxShadow: "0 14px 38px -4px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(0,0,0,0.08)",
             display: "flex",
             flexDirection: "column",
             overflow: "hidden",
             animation: "fadeIn 0.15s ease",
           }}
         >
-          {/* Header */}
+          {/* 头部标题与进度 */}
           <div
             style={{
               padding: "10px 12px",
@@ -269,7 +317,7 @@ export function FloatingTaskDock({ widgets, statuses = [] }: FloatingTaskDockPro
             <button
               type="button"
               onClick={() => setCollapsed(true)}
-              title="收起到右侧胶囊"
+              title="收起为胶囊"
               style={{
                 background: "none",
                 border: "none",
@@ -290,7 +338,7 @@ export function FloatingTaskDock({ widgets, statuses = [] }: FloatingTaskDockPro
             </button>
           </div>
 
-          {/* 进度条细线 */}
+          {/* 顶部细进度条 */}
           <div
             style={{
               width: "100%",
@@ -309,62 +357,134 @@ export function FloatingTaskDock({ widgets, statuses = [] }: FloatingTaskDockPro
             />
           </div>
 
-          {/* 任务列表体 */}
+          {/* 结构化任务列表体：按完成流从上到下展开 */}
           <div
             style={{
-              maxHeight: 280,
+              maxHeight: 320,
               overflowY: "auto",
-              padding: "8px 10px",
+              padding: "8px",
               display: "flex",
               flexDirection: "column",
-              gap: 2,
-              fontFamily: "var(--font-mono)",
-              fontSize: 11.5,
-              lineHeight: 1.45,
+              gap: 4,
             }}
           >
-            {lines.map((line, idx) => {
-              const plain = stripAnsi(line).trim();
-              if (!plain) return null;
-
-              // 判断状态
-              const isTaskDone = /^\[x\]/i.test(plain) || /^✔/.test(plain);
-              const isTaskActive = /^\[>\]/i.test(plain) || /^\[●\]/i.test(plain) || /^⏳/.test(plain);
-              const isHeading = idx === 0 && (plain.includes("Todos") || plain.includes("Task") || plain.includes("任务"));
-
-              // 忽略纯英文 heading
-              if (isHeading) return null;
+            {tasks.map((task) => {
+              const isDone = task.status === "completed";
+              const isActive = task.status === "in_progress";
 
               return (
                 <div
-                  key={idx}
+                  key={`${task.id}-${task.originalIndex}`}
                   style={{
-                    padding: "4px 7px",
-                    borderRadius: 6,
-                    background: isTaskActive
+                    padding: "6px 8px",
+                    borderRadius: 7,
+                    background: isActive
                       ? "color-mix(in srgb, var(--accent) 12%, transparent)"
-                      : "transparent",
-                    border: isTaskActive
-                      ? "1px solid color-mix(in srgb, var(--accent) 25%, transparent)"
+                      : isDone
+                        ? "color-mix(in srgb, var(--bg-hover) 40%, transparent)"
+                        : "transparent",
+                    border: isActive
+                      ? "1px solid color-mix(in srgb, var(--accent) 30%, transparent)"
                       : "1px solid transparent",
-                    color: isTaskDone
-                      ? "var(--text-dim)"
-                      : isTaskActive
-                        ? "var(--text)"
-                        : "var(--text-muted)",
-                    fontWeight: isTaskActive ? 600 : 400,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
                     display: "flex",
                     alignItems: "flex-start",
-                    gap: 6,
+                    gap: 8,
+                    transition: "all 0.12s",
                   }}
                 >
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <AnsiText text={line} />
-                  </span>
+                  {/* 状态指示图标 */}
+                  <div style={{ flexShrink: 0, marginTop: 2 }}>
+                    {isDone ? (
+                      <span
+                        style={{
+                          width: 15,
+                          height: 15,
+                          borderRadius: "50%",
+                          background: "rgba(16, 185, 129, 0.15)",
+                          color: "#10b981",
+                          border: "1px solid rgba(16, 185, 129, 0.35)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 9.5,
+                        }}
+                      >
+                        ✔
+                      </span>
+                    ) : isActive ? (
+                      <span
+                        style={{
+                          width: 15,
+                          height: 15,
+                          borderRadius: "50%",
+                          background: "rgba(56, 189, 248, 0.18)",
+                          color: "var(--accent)",
+                          border: "1px solid var(--accent)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: "50%",
+                            background: "var(--accent)",
+                            display: "inline-block",
+                            animation: "pulse 1.4s infinite",
+                          }}
+                        />
+                      </span>
+                    ) : (
+                      <span
+                        style={{
+                          width: 15,
+                          height: 15,
+                          borderRadius: "50%",
+                          border: "1.5px solid var(--border)",
+                          display: "inline-block",
+                        }}
+                      />
+                    )}
+                  </div>
+
+                  {/* 任务内容 */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: isActive ? 600 : 400,
+                        color: isDone
+                          ? "var(--text-dim)"
+                          : isActive
+                            ? "var(--text)"
+                            : "var(--text-muted)",
+                        textDecoration: isDone ? "line-through" : "none",
+                        lineHeight: 1.4,
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      {task.title}
+                    </div>
+
+                    {isActive && task.activeForm && (
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "var(--accent)",
+                          marginTop: 2,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 4,
+                          fontWeight: 500,
+                        }}
+                      >
+                        <span style={{ opacity: 0.8 }}>正在:</span>
+                        <span>{task.activeForm}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })}

@@ -113,6 +113,7 @@ export type AgentPhase =
   | { kind: "waiting_model" }
   | { kind: "running_command" }
   | { kind: "running_tools"; tools: { id: string; name: string; progress?: string }[] }
+  | { kind: "compacting"; isAuto?: boolean; startedAt?: number }
   | null;
 
 export interface CompactResultInfo {
@@ -1263,10 +1264,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         setIsCompacting(true);
         setCompactError(null);
         setCompactResult(null);
+        setAgentPhase({
+          kind: "compacting",
+          isAuto: event.type === "auto_compaction_start",
+          startedAt: Date.now(),
+        });
         break;
       case "auto_compaction_end":
       case "compaction_end":
         setIsCompacting(false);
+        setAgentPhase({ kind: "waiting_model" });
         if (event.errorMessage) {
           setCompactError(event.errorMessage as string);
           setCompactResult(null);

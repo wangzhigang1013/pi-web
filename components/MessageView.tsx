@@ -182,6 +182,7 @@ function loadThinkingContent(sessionId: string, entryId: string, blockIndex: num
 interface Props {
   message: AgentMessage;
   isStreaming?: boolean;
+  isCompacting?: boolean;
   toolResults?: Map<string, ToolResultMessage>;
   modelNames?: Record<string, string>;
   cwd?: string;
@@ -578,6 +579,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
 function AssistantMessageView({
   message,
   isStreaming,
+  isCompacting,
   toolResults,
   modelNames,
   cwd,
@@ -592,6 +594,7 @@ function AssistantMessageView({
 }: {
   message: AssistantMessage;
   isStreaming?: boolean;
+  isCompacting?: boolean;
   toolResults?: Map<string, ToolResultMessage>;
   modelNames?: Record<string, string>;
   cwd?: string;
@@ -782,7 +785,7 @@ function AssistantMessageView({
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {blockItems.map(({ block, originalIndex }) => (
-          <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} searchTarget={block === searchBlock} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} />
+          <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} searchTarget={block === searchBlock} toolResults={toolResults} isStreaming={isStreaming} isCompacting={isCompacting} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} />
         ))}
       </div>
 
@@ -860,12 +863,12 @@ function AssistantMessageView({
   );
 }
 
-function BlockView({ block, searchTarget, toolResults, isStreaming, streamingDuration, toolCallDurations, cwd, onOpenFile, onOpenSession, sessionId, entryId, blockIndex }: { block: AssistantContentBlock; searchTarget?: boolean; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void; sessionId?: string; entryId?: string; blockIndex: number }) {
+function BlockView({ block, searchTarget, toolResults, isStreaming, isCompacting, streamingDuration, toolCallDurations, cwd, onOpenFile, onOpenSession, sessionId, entryId, blockIndex }: { block: AssistantContentBlock; searchTarget?: boolean; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; isCompacting?: boolean; streamingDuration?: number; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void; sessionId?: string; entryId?: string; blockIndex: number }) {
   if (block.type === "text") {
     return <div data-message-text data-search-target={searchTarget || undefined}><TextBlock block={block as TextContent} isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile} /></div>;
   }
   if (block.type === "thinking") {
-    return <ThinkingBlock block={block as ThinkingContent} duration={streamingDuration} isStreaming={isStreaming} sessionId={sessionId} entryId={entryId} blockIndex={blockIndex} />;
+    return <ThinkingBlock block={block as ThinkingContent} duration={streamingDuration} isStreaming={isStreaming} isCompacting={isCompacting} sessionId={sessionId} entryId={entryId} blockIndex={blockIndex} />;
   }
   if (block.type === "toolCall") {
     const tc = block as ToolCallContent;
@@ -880,10 +883,11 @@ function TextBlock({ block, isStreaming, cwd, onOpenFile }: { block: TextContent
   return <SafeMarkdownBody isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile}>{block.text}</SafeMarkdownBody>;
 }
 
-export function ThinkingBlock({ block, duration, isStreaming, sessionId, entryId, blockIndex }: {
+export function ThinkingBlock({ block, duration, isStreaming, isCompacting, sessionId, entryId, blockIndex }: {
   block: ThinkingContent;
   duration?: number;
   isStreaming?: boolean;
+  isCompacting?: boolean;
   sessionId?: string;
   entryId?: string;
   blockIndex: number;
@@ -1004,13 +1008,15 @@ export function ThinkingBlock({ block, duration, isStreaming, sessionId, entryId
           }}
         >
           <ThinkingIcon active={expanded} />
-          <span style={{ fontWeight: 600, color: "var(--text)", flexShrink: 0 }}>
-            {t("i18n.thinking")}
+          <span style={{ fontWeight: 600, color: isCompacting ? "#f59e0b" : "var(--text)", flexShrink: 0 }}>
+            {isCompacting ? "提炼历史摘要 (压缩中)" : t("i18n.thinking")}
           </span>
           {!expanded && (
             <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-dim)", marginLeft: 2 }}>
               {preview ? (
                 <ReactMarkdown allowedElements={[]} unwrapDisallowed skipHtml>{preview}</ReactMarkdown>
+              ) : isCompacting ? (
+                "正在总结前文对话历史…"
               ) : isStreaming ? (
                 "正在生成思考过程…"
               ) : (
@@ -1027,9 +1033,21 @@ export function ThinkingBlock({ block, duration, isStreaming, sessionId, entryId
               marginLeft: "auto",
               padding: "1px 7px",
               borderRadius: 5,
-              background: isStreaming ? "rgba(56, 189, 248, 0.12)" : "var(--bg-panel)",
-              color: isStreaming ? "var(--accent)" : "var(--text-dim)",
-              border: isStreaming ? "1px solid rgba(56, 189, 248, 0.3)" : "1px solid var(--border)",
+              background: isCompacting
+                ? "rgba(245, 158, 11, 0.15)"
+                : isStreaming
+                  ? "rgba(56, 189, 248, 0.12)"
+                  : "var(--bg-panel)",
+              color: isCompacting
+                ? "#f59e0b"
+                : isStreaming
+                  ? "var(--accent)"
+                  : "var(--text-dim)",
+              border: isCompacting
+                ? "1px solid rgba(245, 158, 11, 0.35)"
+                : isStreaming
+                  ? "1px solid rgba(56, 189, 248, 0.3)"
+                  : "1px solid var(--border)",
               fontSize: 10.5,
               fontWeight: 500,
               fontVariantNumeric: "tabular-nums",
@@ -1038,18 +1056,22 @@ export function ThinkingBlock({ block, duration, isStreaming, sessionId, entryId
               gap: 4,
             }}
           >
-            {isStreaming && (
+            {(isStreaming || isCompacting) && (
               <span
                 style={{
                   width: 5,
                   height: 5,
                   borderRadius: "50%",
-                  background: "var(--accent)",
+                  background: isCompacting ? "#f59e0b" : "var(--accent)",
                   display: "inline-block",
                 }}
               />
             )}
-            {isStreaming ? `思考中 ${displayDuration}s` : `耗时 ${displayDuration}s`}
+            {isCompacting
+              ? `压缩思考中 ${displayDuration}s`
+              : isStreaming
+                ? `思考中 ${displayDuration}s`
+                : `耗时 ${displayDuration}s`}
           </span>
         )}
       </div>

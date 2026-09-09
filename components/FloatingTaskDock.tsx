@@ -73,7 +73,7 @@ function parseTaskLine(rawLine: string, index: number): StructuredTask | null {
   };
 }
 
-export function FloatingTaskDock({ widgets, statuses = [] }: FloatingTaskDockProps) {
+export function FloatingTaskDock({ widgets, statuses = [], messages = [] }: FloatingTaskDockProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   // 匹配 rpiv-todos 或任何包含 todo / task 的组件
@@ -95,20 +95,85 @@ export function FloatingTaskDock({ widgets, statuses = [] }: FloatingTaskDockPro
     );
   }, [statuses]);
 
+  // 从消息流中解析 todo 工具调用的任务状态（确保即使 widget 尚未挂载也能实时感知与联动）
+  const messageTasks = useMemo<StructuredTask[]>(() => {
+    if (!messages || messages.length === 0) return [];
+    const map = new Map<number, StructuredTask>();
+
+    for (const msg of messages) {
+      if (msg.role === "toolResult" && msg.toolName === "todo") {
+        const text = (msg.content ?? []).map((c: any) => c.text || "").join("\n");
+        if (!text) continue;
+
+        // 匹配 "Created #18: 调研任务看板 (pending)"
+        const createdMatches = text.matchAll(/Created #(\d+):\s*(.*?)\s*\((pending|in_progress|completed)\)/g);
+        for (const m of createdMatches) {
+          const id = parseInt(m[1], 10);
+          map.set(id, {
+            id: `#${id}`,
+            title: m[2].trim(),
+            status: m[3] as any,
+            originalIndex: id,
+          });
+        }
+
+        // 匹配 "Updated #18 (pending → completed)"
+        const updateMatches = text.matchAll(/Updated #(\d+)\s*\((.*?)\s*→\s*(pending|in_progress|completed)\)/g);
+        for (const m of updateMatches) {
+          const id = parseInt(m[1], 10);
+          const existing = map.get(id);
+          if (existing) {
+            existing.status = m[3] as any;
+          }
+        }
+
+        // 匹配 "todo list" 输出：
+        const lines = text.split("\n");
+        for (const l of lines) {
+          const m = l.match(/^\[(completed|in_progress|pending)\]\s*#(\d+)\s*(.*?)(?:\s*\((.*?)\))?(?:\s*⛓.*)?$/);
+          if (m) {
+            const id = parseInt(m[2], 10);
+            map.set(id, {
+              id: `#${id}`,
+              status: m[1] as any,
+              title: m[3].trim(),
+              activeForm: m[4]?.trim(),
+              originalIndex: id,
+            });
+          }
+        }
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => Number(a.originalIndex) - Number(b.originalIndex));
+  }, [messages]);
+
   // 解析任务列表与统计
   const taskData = useMemo(() => {
-    if (!todoWidget && !todoStatus) return null;
-    const lines = todoWidget?.lines ?? (todoStatus ? [todoStatus.text] : []);
-    if (lines.length === 0) return null;
+    let parsedTasks: StructuredTask[] = [];
+    let lines: string[] = [];
+
+    if (todoWidget?.lines?.length) {
+      lines = todoWidget.lines;
+      lines.forEach((line, idx) => {
+        const task = parseTaskLine(line, idx);
+        if (task) parsedTasks.push(task);
+      });
+    } else if (todoStatus?.text) {
+      lines = [todoStatus.text];
+      const task = parseTaskLine(todoStatus.text, 0);
+      if (task) parsedTasks.push(task);
+    }
+
+    // 若 widget 尚未输出结构化行，则使用消息流中解析到的任务
+    if (parsedTasks.length === 0 && messageTasks.length > 0) {
+      parsedTasks = messageTasks;
+    }
+
+    if (parsedTasks.length === 0 && lines.length === 0) return null;
 
     const fullText = lines.map((l) => stripAnsi(l)).join("\n");
     const countMatch = fullText.match(/\((\d+)\s*[/／]\s*(\d+)\)/);
-
-    const parsedTasks: StructuredTask[] = [];
-    lines.forEach((line, idx) => {
-      const task = parseTaskLine(line, idx);
-      if (task) parsedTasks.push(task);
-    });
 
     const completed = countMatch
       ? parseInt(countMatch[1], 10)
@@ -121,9 +186,8 @@ export function FloatingTaskDock({ widgets, statuses = [] }: FloatingTaskDockPro
 
     const activeTask = parsedTasks.find((t) => t.status === "in_progress");
 
-    // 按照从先完成到最后完成、再到进行中、再到待办的顺序向下展开（Pipeline 流水线顺序）
+    // 按照从先完成到最后完成、再到进行中、再到待办的顺序向下展开（流水线顺延）
     const sortedTasks = [...parsedTasks].sort((a, b) => {
-      // 保持自然执行流：已完成项按完成顺序在上，进行中项在当前，待办项在下
       const statusWeight = { completed: 0, in_progress: 1, pending: 2 };
       if (statusWeight[a.status] !== statusWeight[b.status]) {
         return statusWeight[a.status] - statusWeight[b.status];
@@ -140,7 +204,7 @@ export function FloatingTaskDock({ widgets, statuses = [] }: FloatingTaskDockPro
       percent,
       activeTitle: activeTask?.activeForm || activeTask?.title || null,
     };
-  }, [todoWidget, todoStatus]);
+  }, [todoWidget, todoStatus, messageTasks]);
 
   if (!taskData) {
     return null;

@@ -1510,7 +1510,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
         {chatInputElement}
         <ExtensionStatusBar statuses={nonTodoStatuses} widgets={nonTodoWidgets} />
       </div>
-      <FloatingTaskDock widgets={extensionWidgets} statuses={extensionStatuses} />
+      <FloatingTaskDock widgets={extensionWidgets} statuses={extensionStatuses} messages={messages} />
       {isEmptyNew && <div className="min-h-0 flex-1" />}
     </div>
   );

@@ -35,7 +35,7 @@ import {
   shouldShowBrowserNotification,
   showBrowserNotification,
 } from "@/lib/browser-notifications";
-import { setupPushSubscription } from "@/lib/push-client";
+import { hasActivePushSubscription, setupPushSubscription } from "@/lib/push-client";
 import { getInitialNavigation } from "@/lib/initial-navigation";
 import { rekeyDraft } from "@/lib/draft-store";
 import {
@@ -883,23 +883,35 @@ export function AppShell() {
 
     if (selectedSession?.relation?.kind === "subagent") return;
     if (!shouldShowBrowserNotification()) return;
-    const targetSession = selectedSession;
-    deliverSessionNotification({
-      targetSession,
-      title: targetSession?.name ?? translate("i18n.sessionComplete"),
-      body: translate("i18n.taskFinished"),
-      tag: targetSession ? `pi-session-complete:${targetSession.id}` : "pi-session-complete",
+    // When a Web Push subscription is active, the service worker's `push`
+    // handler owns the background completion notification (see public/sw.js).
+    // Staying silent here prevents the same completion from firing twice
+    // (in-page toast + push toast).
+    void hasActivePushSubscription().then((hasPush) => {
+      if (hasPush) return;
+      const targetSession = selectedSession;
+      deliverSessionNotification({
+        targetSession,
+        title: targetSession?.name ?? translate("i18n.sessionComplete"),
+        body: translate("i18n.taskFinished"),
+        tag: targetSession ? `pi-session-complete:${targetSession.id}` : "pi-session-complete",
+      });
     });
   }, [deliverSessionNotification, hydrateSelectedSession, selectedSession, translate]);
 
   const handleBackgroundTaskDone = useCallback(() => {
     if (soundEnabledRef.current) playDoneSound();
     if (!shouldShowBrowserNotification()) return;
-    deliverSessionNotification({
-      targetSession: selectedSession,
-      title: selectedSession?.name ?? translate("i18n.sessionComplete"),
-      body: translate("i18n.taskFinished"),
-      tag: selectedSession ? `pi-session-complete:${selectedSession.id}` : "pi-session-complete",
+    // Same dedup as handleAgentEnd: the SW push handler owns background
+    // completion notifications when a push subscription exists.
+    void hasActivePushSubscription().then((hasPush) => {
+      if (hasPush) return;
+      deliverSessionNotification({
+        targetSession: selectedSession,
+        title: selectedSession?.name ?? translate("i18n.sessionComplete"),
+        body: translate("i18n.taskFinished"),
+        tag: selectedSession ? `pi-session-complete:${selectedSession.id}` : "pi-session-complete",
+      });
     });
   }, [deliverSessionNotification, playDoneSound, selectedSession, soundEnabledRef, translate]);
 

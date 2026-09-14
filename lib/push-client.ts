@@ -26,6 +26,25 @@ export function isPushSupported(): boolean {
     && "Notification" in window;
 }
 
+/**
+ * Whether a Web Push subscription is already active for this browser.
+ *
+ * When the page has an active push subscription, the service worker's `push`
+ * handler owns the completion system notification (see public/sw.js). The
+ * in-page notification path must then stay silent to avoid double-firing the
+ * same completion notification (browser toast + push toast).
+ */
+export async function hasActivePushSubscription(): Promise<boolean> {
+  if (!isPushSupported() || Notification.permission !== "granted") return false;
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    return subscription !== null;
+  } catch {
+    return false;
+  }
+}
+
 export async function setupPushSubscription(locale: string): Promise<boolean> {
   if (!isPushSupported() || Notification.permission !== "granted") return false;
   if (activeSubscriptionPromise) return activeSubscriptionPromise;

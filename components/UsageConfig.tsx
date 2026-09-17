@@ -150,12 +150,40 @@ function buildMonthBars(report: UsageReport | null, today: Date): MonthBar[] {
 
 function SummaryCard({ label, totals }: { label: string; totals: UsageTotals }) {
   const { t } = useI18n();
+  const netTokens = totals.input + totals.output;
+  const hitRate = totals.totalTokens > 0 ? Math.round(((totals.cacheRead + totals.cacheWrite) / totals.totalTokens) * 100) : 0;
+
   return (
     <div className="settings-usage-card">
-      <div className="settings-usage-card-label">{label}</div>
-      <div className="settings-usage-card-value">{formatTokenCount(totals.totalTokens)}</div>
-      <div className="settings-usage-card-sub">
-        {t("usage.cardSub", { cost: formatCost(totals.cost), requests: formatNumber(totals.requests) })}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div className="settings-usage-card-label">{label}</div>
+        {hitRate > 0 && (
+          <span
+            style={{
+              fontSize: 10,
+              color: "#10b981",
+              background: "rgba(16, 185, 129, 0.1)",
+              padding: "1px 6px",
+              borderRadius: 4,
+              fontWeight: 500,
+            }}
+            title="多轮长会话上下文命中服务端 KV 缓存的比例"
+          >
+            缓存命中 {hitRate}%
+          </span>
+        )}
+      </div>
+      <div className="settings-usage-card-value">
+        {formatTokenCount(netTokens)}
+        <span style={{ fontSize: 11, fontWeight: 400, color: "var(--text-dim)", marginLeft: 6 }}>
+          净用量
+        </span>
+      </div>
+      <div className="settings-usage-card-sub" style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
+        <span>{t("usage.cardSub", { cost: formatCost(totals.cost), requests: formatNumber(totals.requests) })}</span>
+        <span style={{ color: "var(--text-dim)" }} title="含多轮交互中服务端重复读取的 KV 缓存总上下文">
+          含缓存: {formatTokenCount(totals.totalTokens)}
+        </span>
       </div>
     </div>
   );
@@ -163,8 +191,14 @@ function SummaryCard({ label, totals }: { label: string; totals: UsageTotals }) 
 
 function ModelRows({ models }: { models: Record<string, UsageTotals> }) {
   const { t } = useI18n();
-  const entries = Object.entries(models);
+  const entries = useMemo(() => {
+    return Object.entries(models).sort((a, b) => b[1].totalTokens - a[1].totalTokens);
+  }, [models]);
+
   if (entries.length === 0) return null;
+
+  const grandTotalTokens = entries.reduce((acc, curr) => acc + curr[1].totalTokens, 0);
+
   return (
     <table className="settings-usage-table">
       <thead>
@@ -174,20 +208,30 @@ function ModelRows({ models }: { models: Record<string, UsageTotals> }) {
           <th className="is-num">{t("usage.input")}</th>
           <th className="is-num">{t("usage.output")}</th>
           <th className="is-num">{t("usage.cache")}</th>
+          <th className="is-num">总 Tokens</th>
           <th className="is-num">{t("usage.cost")}</th>
         </tr>
       </thead>
       <tbody>
-        {entries.map(([key, value]) => (
-          <tr key={key}>
-            <td>{key}</td>
-            <td className="is-num">{formatNumber(value.requests)}</td>
-            <td className="is-num">{formatTokenCount(value.input)}</td>
-            <td className="is-num">{formatTokenCount(value.output)}</td>
-            <td className="is-num">{formatTokenCount(value.cacheRead + value.cacheWrite)}</td>
-            <td className="is-num">{formatCost(value.cost)}</td>
-          </tr>
-        ))}
+        {entries.map(([key, value]) => {
+          const pct = grandTotalTokens > 0 ? ((value.totalTokens / grandTotalTokens) * 100).toFixed(1) : "0";
+          return (
+            <tr key={key}>
+              <td>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontWeight: 500 }}>{key}</span>
+                  <span style={{ fontSize: 10, color: "var(--text-dim)" }}>({pct}%)</span>
+                </div>
+              </td>
+              <td className="is-num">{formatNumber(value.requests)}</td>
+              <td className="is-num">{formatTokenCount(value.input)}</td>
+              <td className="is-num">{formatTokenCount(value.output)}</td>
+              <td className="is-num">{formatTokenCount(value.cacheRead + value.cacheWrite)}</td>
+              <td className="is-num" style={{ fontWeight: 600 }}>{formatTokenCount(value.totalTokens)}</td>
+              <td className="is-num">{formatCost(value.cost)}</td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );
@@ -245,6 +289,54 @@ export function UsageConfig() {
   const today = useMemo(() => startOfDay(new Date()), []);
   const todayKey = useMemo(() => localDayKey(today), [today]);
   const thisMonthKey = useMemo(() => localMonthKey(today), [today]);
+  const [selectedMonthKey, setSelectedMonthKey] = useState<string>(thisMonthKey);
+
+  // 提取历史上有数据的所有月份（倒序）
+  const availableMonths = useMemo(() => {
+    if (!report) return [];
+    const months = new Set<string>();
+    for (const day of report.days) {
+      if (day.date) months.add(day.date.slice(0, 7));
+    }
+    months.add(thisMonthKey);
+    return Array.from(months).sort().reverse();
+  }, [report, thisMonthKey]);
+
+  // 根据选定月份（默认且优先为本月）聚合模型数据
+  const currentMonthModels = useMemo(() => {
+    if (!report) return {};
+    if (selectedMonthKey === "all") {
+      return Object.fromEntries(report.models.map((model) => [model.key, model]));
+    }
+    const map: Record<string, UsageTotals> = {};
+    for (const day of report.days) {
+      if (day.date.startsWith(selectedMonthKey)) {
+        for (const [key, totals] of Object.entries(day.models || {})) {
+          if (!map[key]) {
+            map[key] = {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              reasoning: 0,
+              totalTokens: 0,
+              requests: 0,
+              cost: 0,
+            };
+          }
+          map[key].input += totals.input || 0;
+          map[key].output += totals.output || 0;
+          map[key].cacheRead += totals.cacheRead || 0;
+          map[key].cacheWrite += totals.cacheWrite || 0;
+          map[key].reasoning += totals.reasoning || 0;
+          map[key].totalTokens += totals.totalTokens || 0;
+          map[key].requests += totals.requests || 0;
+          map[key].cost += totals.cost || 0;
+        }
+      }
+    }
+    return map;
+  }, [report, selectedMonthKey]);
 
   const weeks = useMemo(
     () => buildHeatmapWeeks(dayByDate, today, monthLabelFormatter),
@@ -297,6 +389,27 @@ export function UsageConfig() {
             <SummaryCard label={t("usage.allTime")} totals={report.totals} />
           </div>
 
+          <div
+            style={{
+              marginTop: 10,
+              padding: "8px 12px",
+              borderRadius: 6,
+              background: "rgba(125, 125, 125, 0.05)",
+              border: "1px solid var(--border)",
+              fontSize: 11,
+              color: "var(--text-dim)",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              lineHeight: 1.5,
+            }}
+          >
+            <span style={{ fontSize: 13 }}>💡</span>
+            <span>
+              <strong>指标口径说明：</strong>「净用量」为实际未缓存的新输入与模型生成总量（入+出），直接反映真实的有效消费；「含缓存」反映长会话多轮交互中的全量上下文深度（大模型厂商对缓存读取通常免费或给予 1~2.5 折深度优惠，不消耗常规生成额度）。
+            </span>
+          </div>
+
           <section className="settings-usage-section">
             <h3 className="settings-usage-heading">{t("usage.dailyActivity")}</h3>
             <p className="settings-usage-section-description">{t("usage.dailyActivityDescription")}</p>
@@ -344,12 +457,14 @@ export function UsageConfig() {
                   <strong>{longDateFormatter.format(new Date(`${selectedDate}T00:00:00`))}</strong>
                   <button type="button" className="settings-usage-day-close" onClick={() => setSelectedDate(null)} aria-label={t("i18n.close")}>×</button>
                 </div>
-                <p className="settings-usage-day-summary">
-                  {t("usage.daySummary", {
-                    tokens: formatTokenCount(selectedDay?.totalTokens ?? 0),
-                    cost: formatCost(selectedDay?.cost ?? 0),
-                    requests: formatNumber(selectedDay?.requests ?? 0),
-                  })}
+                <p className="settings-usage-day-summary" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                  <span>净消耗: <strong style={{ color: "var(--text)" }}>{formatTokenCount((selectedDay?.input ?? 0) + (selectedDay?.output ?? 0))}</strong></span>
+                  <span style={{ color: "var(--border)" }}>|</span>
+                  <span>含缓存总计: {formatTokenCount(selectedDay?.totalTokens ?? 0)}</span>
+                  <span style={{ color: "var(--border)" }}>|</span>
+                  <span>{formatCost(selectedDay?.cost ?? 0)}</span>
+                  <span style={{ color: "var(--border)" }}>|</span>
+                  <span>{formatNumber(selectedDay?.requests ?? 0)} 次请求</span>
                 </p>
                 <ModelRows models={selectedDay?.models ?? {}} />
               </div>
@@ -378,10 +493,56 @@ export function UsageConfig() {
           </section>
 
           <section className="settings-usage-section">
-            <h3 className="settings-usage-heading">{t("usage.byModel")}</h3>
-            <ModelRows
-              models={Object.fromEntries(report.models.map((model) => [model.key, model]))}
-            />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+              <div>
+                <h3 className="settings-usage-heading" style={{ margin: 0 }}>
+                  {selectedMonthKey === "all"
+                    ? t("usage.byModel")
+                    : `${selectedMonthKey === thisMonthKey ? "本月" : selectedMonthKey}模型统计`}
+                </h3>
+                <p className="settings-usage-section-description" style={{ margin: "4px 0 0" }}>
+                  {selectedMonthKey === "all"
+                    ? "历史累计所有模型统计"
+                    : `仅统计 ${selectedMonthKey} 各模型的 Token 消耗与费用，过滤无关历史数据`}
+                </p>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>统计周期:</span>
+                <select
+                  value={selectedMonthKey}
+                  onChange={(e) => setSelectedMonthKey(e.target.value)}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: 6,
+                    fontSize: 12,
+                    border: "1px solid var(--border)",
+                    background: "var(--bg)",
+                    color: "var(--text)",
+                    cursor: "pointer",
+                  }}
+                >
+                  <option value={thisMonthKey}>本月 ({thisMonthKey})</option>
+                  {availableMonths
+                    .filter((m) => m !== thisMonthKey)
+                    .map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  <option value="all">全部历史累计</option>
+                </select>
+              </div>
+            </div>
+
+            {Object.keys(currentMonthModels).length === 0 ? (
+              <p className="settings-usage-empty" style={{ padding: "20px 0" }}>
+                {selectedMonthKey === thisMonthKey ? "本月暂无模型用量记录" : `${selectedMonthKey} 暂无模型用量记录`}
+              </p>
+            ) : (
+              <ModelRows models={currentMonthModels} />
+            )}
+
             <p className="settings-usage-footnote">
               {t("usage.footnote", { sessions: formatNumber(report.sessionFiles) })}
             </p>

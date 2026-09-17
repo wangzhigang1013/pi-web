@@ -590,6 +590,7 @@ export class AgentSessionWrapper {
           }
           const promptImages = command.images as Array<{ type: "image"; data: string; mimeType: string }> | undefined;
           const streamingBehavior = command.streamingBehavior as "steer" | "followUp" | undefined;
+          const isSlashCommand = typeof command.message === "string" && command.message.trim().startsWith("/");
           let preflightAccepted = false;
           let preflightSettled = false;
           let promptSettled = false;
@@ -598,7 +599,9 @@ export class AgentSessionWrapper {
           const preflight = new Promise<void>((resolve, reject) => {
             acceptPreflight = () => {
               preflightAccepted = true;
-              this.agentRunNeedsCompletion = true;
+              if (!isSlashCommand) {
+                this.agentRunNeedsCompletion = true;
+              }
               if (preflightSettled) return;
               preflightSettled = true;
               resolve();

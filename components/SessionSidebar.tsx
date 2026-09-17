@@ -439,6 +439,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const [workspaceOrder, setWorkspaceOrder] = useState<string[]>(() => loadWorkspaceOrder());
   const [archivedSessionIds, setArchivedSessionIds] = useState<Set<string>>(() => loadArchivedSessionIds());
   const [expandedArchivedFolders, setExpandedArchivedFolders] = useState<Set<string>>(() => new Set());
+  // Workspace drag & drop reorder state
+  const [draggingWorkspaceKey, setDraggingWorkspaceKey] = useState<string | null>(null);
+  const [dragOverWorkspaceKey, setDragOverWorkspaceKey] = useState<string | null>(null);
+  const [dragOverPosition, setDragOverPosition] = useState<"before" | "after" | null>(null);
 
   const loadSessions = useCallback(async (showLoading = false, force = false) => {
     const loadId = ++sessionLoadIdRef.current;
@@ -1063,6 +1067,35 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     });
   }, [treeStructure.workspaceGroups]);
 
+  const handleWorkspaceDrop = useCallback((targetKey: string, position: "before" | "after") => {
+    if (!draggingWorkspaceKey || draggingWorkspaceKey === targetKey) {
+      setDraggingWorkspaceKey(null);
+      setDragOverWorkspaceKey(null);
+      setDragOverPosition(null);
+      return;
+    }
+
+    setWorkspaceOrder(() => {
+      const currentKeys = treeStructure.workspaceGroups.map((g) => g.key);
+      const fromIndex = currentKeys.indexOf(draggingWorkspaceKey);
+      if (fromIndex < 0) return currentKeys;
+
+      const next = [...currentKeys];
+      next.splice(fromIndex, 1);
+      const targetIndexInNext = next.indexOf(targetKey);
+      if (targetIndexInNext < 0) return currentKeys;
+
+      const insertIndex = position === "after" ? targetIndexInNext + 1 : targetIndexInNext;
+      next.splice(insertIndex, 0, draggingWorkspaceKey);
+      saveWorkspaceOrder(next);
+      return next;
+    });
+
+    setDraggingWorkspaceKey(null);
+    setDragOverWorkspaceKey(null);
+    setDragOverPosition(null);
+  }, [draggingWorkspaceKey, treeStructure.workspaceGroups]);
+
   const toggleFolderCollapse = useCallback((key: string) => {
     setCollapsedFolders((prev) => {
       const next = new Set(prev);
@@ -1647,11 +1680,14 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             {treeStructure.workspaceGroups.map((group, groupIndex) => {
               const folderKey = `ws_${group.key}`;
               const isCollapsed = collapsedFolders.has(folderKey);
+              const isDragging = draggingWorkspaceKey === group.key;
+              const isOver = dragOverWorkspaceKey === group.key;
               return (
                 <div key={group.key} style={{ display: "flex", flexDirection: "column" }}>
                   <div
                     draggable={true}
                     onDragStart={(e) => {
+                      setDraggingWorkspaceKey(group.key);
                       const payload = {
                         type: "pi-web-path",
                         path: group.name,
@@ -1660,25 +1696,62 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                         isDir: true,
                       };
                       e.dataTransfer.setData("application/x-pi-web-path", JSON.stringify(payload));
+                      e.dataTransfer.setData("application/x-pi-web-workspace-key", group.key);
                       e.dataTransfer.setData("text/plain", `@${group.name}/ `);
-                      e.dataTransfer.effectAllowed = "copy";
+                      e.dataTransfer.effectAllowed = "copyMove";
+                    }}
+                    onDragOver={(e) => {
+                      if (!draggingWorkspaceKey || draggingWorkspaceKey === group.key) return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.dataTransfer.dropEffect = "move";
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const isBefore = e.clientY < rect.top + rect.height / 2;
+                      const nextPos = isBefore ? "before" : "after";
+                      if (dragOverWorkspaceKey !== group.key || dragOverPosition !== nextPos) {
+                        setDragOverWorkspaceKey(group.key);
+                        setDragOverPosition(nextPos);
+                      }
+                    }}
+                    onDragLeave={(e) => {
+                      if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                      if (dragOverWorkspaceKey === group.key) {
+                        setDragOverWorkspaceKey(null);
+                        setDragOverPosition(null);
+                      }
+                    }}
+                    onDrop={(e) => {
+                      if (!draggingWorkspaceKey || draggingWorkspaceKey === group.key) return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleWorkspaceDrop(group.key, dragOverPosition ?? "after");
+                    }}
+                    onDragEnd={() => {
+                      setDraggingWorkspaceKey(null);
+                      setDragOverWorkspaceKey(null);
+                      setDragOverPosition(null);
                     }}
                     onClick={() => {
                       toggleFolderCollapse(folderKey);
                     }}
-                    title={displayCwd(group.root, homeDir)}
+                    title={`${displayCwd(group.root, homeDir)} (可按住拖拽排序)`}
                     style={{
                       display: "flex", alignItems: "center", gap: 7,
                       height: 35, padding: "0 8px 0 10px",
-                      cursor: "grab",
+                      cursor: isDragging ? "grabbing" : "grab",
+                      opacity: isDragging ? 0.35 : 1,
                       borderRadius: 7,
                       margin: "3px 4px 2px",
                       background: group.isCurrent ? "color-mix(in srgb, var(--accent) 9%, var(--bg))" : "transparent",
                       border: group.isCurrent ? "1px solid color-mix(in srgb, var(--accent) 30%, transparent)" : "1px solid transparent",
                       borderLeft: group.isCurrent ? "3px solid var(--accent)" : "1px solid transparent",
-                      boxShadow: group.isCurrent ? "0 1px 3px rgba(0,0,0,0.03)" : "none",
+                      boxShadow: isOver
+                        ? (dragOverPosition === "before"
+                            ? "inset 0 2px 0 0 var(--accent), 0 1px 3px rgba(0,0,0,0.03)"
+                            : "inset 0 -2px 0 0 var(--accent), 0 1px 3px rgba(0,0,0,0.03)")
+                        : (group.isCurrent ? "0 1px 3px rgba(0,0,0,0.03)" : "none"),
                       userSelect: "none",
-                      transition: "background 0.12s, border-color 0.12s",
+                      transition: "background 0.12s, border-color 0.12s, opacity 0.15s",
                     }}
                     onMouseEnter={(e) => {
                       if (!group.isCurrent) e.currentTarget.style.background = "var(--bg-hover)";
@@ -1720,72 +1793,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                     <span style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: "var(--font-mono)", padding: "1px 6px", background: "var(--bg-hover)", borderRadius: 8 }}>
                       {group.families.length}
                     </span>
-                    <div style={{ display: "flex", gap: 1, alignItems: "center" }}>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleMoveWorkspace(group.key, -1);
-                        }}
-                        disabled={groupIndex === 0}
-                        title="上移一个位置"
-                        style={{
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          width: 18, height: 18, padding: 0,
-                          background: "none", border: "none",
-                          borderRadius: 3,
-                          color: groupIndex === 0 ? "transparent" : "var(--text-dim)",
-                          cursor: groupIndex === 0 ? "default" : "pointer",
-                          opacity: groupIndex === 0 ? 0 : 0.8,
-                          transition: "background 0.12s, color 0.12s",
-                        }}
-                        onMouseEnter={(e) => {
-                          if (groupIndex > 0) {
-                            e.currentTarget.style.background = "var(--bg-hover)";
-                            e.currentTarget.style.color = "var(--text)";
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = "none";
-                          e.currentTarget.style.color = "var(--text-dim)";
-                        }}
-                      >
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="18 15 12 9 6 15" />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleMoveWorkspace(group.key, 1);
-                        }}
-                        disabled={groupIndex === treeStructure.workspaceGroups.length - 1}
-                        title="下移一个位置"
-                        style={{
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          width: 18, height: 18, padding: 0,
-                          background: "none", border: "none",
-                          borderRadius: 3,
-                          color: groupIndex === treeStructure.workspaceGroups.length - 1 ? "transparent" : "var(--text-dim)",
-                          cursor: groupIndex === treeStructure.workspaceGroups.length - 1 ? "default" : "pointer",
-                          opacity: groupIndex === treeStructure.workspaceGroups.length - 1 ? 0 : 0.8,
-                          transition: "background 0.12s, color 0.12s",
-                        }}
-                        onMouseEnter={(e) => {
-                          if (groupIndex < treeStructure.workspaceGroups.length - 1) {
-                            e.currentTarget.style.background = "var(--bg-hover)";
-                            e.currentTarget.style.color = "var(--text)";
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = "none";
-                          e.currentTarget.style.color = "var(--text-dim)";
-                        }}
-                      >
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="6 9 12 15 18 9" />
-                        </svg>
-                      </button>
-                    </div>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

@@ -1177,7 +1177,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           const promptWasPending = rpcPromptPendingRef.current;
           rpcPromptPendingRef.current = false;
           optimisticUserMessageKeyRef.current = null;
-          const firstNotification = notifyPromptStage(runId);
+          const firstNotification = promptWasPending ? notifyPromptStage(runId) : false;
           if (!promptWasPending && !firstNotification) break;
 
           const sid = sessionIdRef.current;

@@ -3,6 +3,7 @@ export const SETTINGS_SECTION_VALUES = [
   "usage",
   "models",
   "antigravity",
+  "chehejia",
   "skills",
   "agents",
   "plugins",

@@ -7,9 +7,7 @@ import { SessionSidebar } from "./SessionSidebar";
 import { ChatWindow } from "./ChatWindow";
 import type { ChatScrollPosition } from "@/lib/chat-scroll-position";
 import { FileViewer } from "./FileViewer";
-import { WebTerminal } from "./terminal/WebTerminal";
 import { CloudSyncButton } from "./CloudSyncButton";
-import { BgTasksButton } from "./BgTasksButton";
 import { TabBar, type Tab } from "./TabBar";
 import { openFileTab, saveFileViewerState } from "./file-tab-state";
 import { SettingsPanel, SettingsSectionIcon } from "./SettingsPanel";
@@ -18,8 +16,6 @@ import { BranchNavigator, hasSessionBranches } from "./BranchNavigator";
 import { SystemPromptPanel } from "./SystemPromptPanel";
 import { ToolDefinitionsPanel } from "./ToolDefinitionsPanel";
 import { AgentSessionPanel } from "./AgentSessionPanel";
-import { TerminalPanel } from "./TerminalPanel";
-import { newTerminalTab, restoreTerminalTabs, TERMINAL_TABS_KEY, type TerminalTab } from "./terminal-tab-state";
 import { useTheme } from "@/hooks/useTheme";
 import { useI18n } from "@/hooks/useI18n";
 import { useIsMobile, useIsNarrowMobile } from "@/hooks/useIsMobile";
@@ -178,7 +174,6 @@ export function AppShell() {
   const [projectTrustError, setProjectTrustError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(() => !initialNavigation.sidebarCollapsed);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
-  const [rightPanelTab, setRightPanelTab] = useState<"files" | "terminal">("files");
   const [mobileToolbarMoreOpen, setMobileToolbarMoreOpen] = useState(false);
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
   const sidebarWidthRef = useRef(SIDEBAR_DEFAULT_WIDTH);
@@ -393,31 +388,8 @@ export function AppShell() {
       setActiveTopPanel(null);
       setMobileToolbarMoreOpen(false);
     }
-    if (!rightPanelOpen) {
-      setRightPanelTab("files");
-      setRightPanelOpen(true);
-    } else if (rightPanelTab === "terminal") {
-      setRightPanelTab("files");
-    } else {
-      setRightPanelOpen(false);
-    }
-  }, [isMobile, rightPanelOpen, rightPanelTab]);
-
-  const handleTerminalToggle = useCallback(() => {
-    if (isMobile) {
-      setSidebarOpen(false);
-      setActiveTopPanel(null);
-      setMobileToolbarMoreOpen(false);
-    }
-    if (!rightPanelOpen) {
-      setRightPanelTab("terminal");
-      setRightPanelOpen(true);
-    } else if (rightPanelTab === "terminal") {
-      setRightPanelOpen(false);
-    } else {
-      setRightPanelTab("terminal");
-    }
-  }, [isMobile, rightPanelOpen, rightPanelTab]);
+    setRightPanelOpen((prev) => !prev);
+  }, [isMobile]);
 
   useEffect(() => {
     if (!mobileToolbarMoreOpen) return;
@@ -466,41 +438,9 @@ export function AppShell() {
     return () => ro.disconnect();
   }, [activeTopPanel, isMobile]);
 
-  // Files unmount when inactive; workspace terminals stay mounted until closed.
   const [fileTabs, setFileTabs] = useState<Tab[]>([]);
   const [activeFileTabId, setActiveFileTabId] = useState<string | null>(null);
-  const [terminalTabs, setTerminalTabs] = useState<TerminalTab[]>([]);
-  const [terminalsRestored, setTerminalsRestored] = useState(false);
-  const panelTabs: Tab[] = [...fileTabs, ...terminalTabs.map((tab) => ({
-    id: tab.id,
-    label: getFileName(tab.cwd) || tab.cwd,
-    filePath: tab.cwd,
-    kind: "terminal" as const,
-    closing: Boolean(tab.closing),
-  }))];
-
-  useEffect(() => {
-    try {
-      const saved = restoreTerminalTabs(window.sessionStorage.getItem(TERMINAL_TABS_KEY));
-      setTerminalTabs(saved.tabs);
-      if (saved.activeId) {
-        setActiveFileTabId(saved.activeId);
-        setRightPanelOpen(saved.open);
-      }
-    } catch { /* storage is optional */ }
-    setTerminalsRestored(true);
-  }, []);
-
-  useEffect(() => {
-    if (!terminalsRestored) return;
-    try {
-      window.sessionStorage.setItem(TERMINAL_TABS_KEY, JSON.stringify({
-        tabs: terminalTabs.map(({ id, cwd }) => ({ id, cwd })),
-        activeId: activeFileTabId,
-        open: rightPanelOpen,
-      }));
-    } catch { /* storage is optional */ }
-  }, [terminalTabs, activeFileTabId, rightPanelOpen, terminalsRestored]);
+  const panelTabs: Tab[] = fileTabs;
 
   const handleFileViewerStateChange = useCallback((
     tabId: string,
@@ -1042,7 +982,6 @@ export function AppShell() {
       tabId,
     }));
     setActiveFileTabId(tabId);
-    setRightPanelTab("files");
     setRightPanelOpen(true);
     // On mobile the file panel is full-screen; close the drawer so it shows.
     if (isMobile) setSidebarOpen(false);
@@ -1052,39 +991,18 @@ export function AppShell() {
     handleOpenFile(filePath, getFileName(filePath), { sourceSessionId: selectedSession?.id ?? null });
   }, [handleOpenFile, selectedSession?.id]);
 
-  const handleOpenTerminal = useCallback((cwd: string) => {
-    const existing = terminalTabs.find((tab) => tab.cwd === cwd);
-    const tab = existing ?? newTerminalTab(cwd);
-    if (!existing) setTerminalTabs((tabs) => [...tabs, tab]);
-    setActiveFileTabId(tab.id);
-    setRightPanelOpen(true);
-    if (isMobile) setSidebarOpen(false);
-  }, [terminalTabs, isMobile]);
-
-  const handleTerminalClosed = (tab: TerminalTab) => {
-    const replacement = tab.closing === "restart" ? newTerminalTab(tab.cwd) : null;
-    const remaining = terminalTabs.filter((item) => item.id !== tab.id);
-    setTerminalTabs((tabs) => tabs.flatMap((item) => item.id !== tab.id ? [item] : replacement ? [replacement] : []));
-    setActiveFileTabId((current) => current !== tab.id ? current : replacement?.id ?? remaining.at(-1)?.id ?? fileTabs.at(-1)?.id ?? null);
-    if (!replacement && !remaining.length && !fileTabs.length) setRightPanelOpen(false);
-  };
-
   const handleCloseFileTab = useCallback((tabId: string) => {
-    if (terminalTabs.some((tab) => tab.id === tabId)) {
-      setTerminalTabs((tabs) => tabs.map((tab) => tab.id === tabId && !tab.closing ? { ...tab, closing: "close" } : tab));
-      return;
-    }
     setFileTabs((prev) => {
       const next = prev.filter((t) => t.id !== tabId);
-      if (next.length === 0 && terminalTabs.length === 0) setRightPanelOpen(false);
+      if (next.length === 0) setRightPanelOpen(false);
       return next;
     });
     setActiveFileTabId((cur) => {
       if (cur !== tabId) return cur;
       const remaining = fileTabs.filter((t) => t.id !== tabId);
-      return remaining.at(-1)?.id ?? terminalTabs.at(-1)?.id ?? null;
+      return remaining.at(-1)?.id ?? null;
     });
-  }, [fileTabs, terminalTabs]);
+  }, [fileTabs]);
 
   const handleViewFullHistory = useCallback(() => {
     if (!selectedSession) return;
@@ -1182,7 +1100,6 @@ export function AppShell() {
         selectedCwd={selectedSession?.cwd ?? newSessionCwd ?? null}
         onCwdChange={handleCwdChange}
         onOpenFile={handleOpenFile}
-        onOpenTerminal={handleOpenTerminal}
         explorerRefreshKey={explorerRefreshKey}
         onExplorerRefresh={handleExplorerRefresh}
         onAtMention={handleAtMention}
@@ -1588,7 +1505,6 @@ export function AppShell() {
           {!mobile && <span>{translate("tools.label")}</span>}
         </button>
         {mobile && <CloudSyncButton iconButtonSize={TOP_BAR_ICON_BUTTON_SIZE} />}
-        {mobile && <BgTasksButton iconButtonSize={TOP_BAR_ICON_BUTTON_SIZE} />}
       </div>
     );
   };
@@ -1752,42 +1668,6 @@ export function AppShell() {
             )}
           </>
         )}
-      </button>
-    );
-  };
-
-  const renderMainTerminalToggle = (mobile: boolean) => {
-    const covered = mobile && mobileToolbarMoreOpen;
-    const isTermActive = rightPanelOpen && rightPanelTab === "terminal";
-    return (
-      <button
-        type="button"
-        onClick={handleTerminalToggle}
-        disabled={covered}
-        tabIndex={covered ? -1 : undefined}
-        aria-controls="file-panel"
-        aria-expanded={isTermActive}
-        aria-hidden={covered ? true : undefined}
-        title={isTermActive ? "隐藏终端" : "打开交互终端"}
-        aria-label={isTermActive ? "隐藏终端" : "打开交互终端"}
-        data-mobile-toolbar-terminal={mobile ? "true" : undefined}
-        style={{
-          display: "flex", alignItems: "center", justifyContent: "center",
-          width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
-          visibility: covered ? "hidden" : "visible",
-          pointerEvents: covered ? "none" : "auto",
-          background: isTermActive ? "var(--bg-selected)" : "none",
-          border: "none", borderLeft: "1px solid var(--border)",
-          color: isTermActive ? "var(--accent)" : "var(--text-muted)",
-          cursor: "pointer", flexShrink: 0, transition: "color 0.12s, background 0.12s",
-        }}
-        onMouseEnter={(event) => { if (!covered) event.currentTarget.style.color = "var(--text)"; }}
-        onMouseLeave={(event) => { event.currentTarget.style.color = isTermActive ? "var(--accent)" : "var(--text-muted)"; }}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <polyline points="4 17 10 11 4 5" />
-          <line x1="12" y1="19" x2="20" y2="19" />
-        </svg>
       </button>
     );
   };
@@ -2041,7 +1921,6 @@ export function AppShell() {
               {!isNarrowMobile && renderChatToolbarActions(true)}
               {renderSessionStatsButton(true)}
               {renderMainFileToggle(true)}
-              {renderMainTerminalToggle(true)}
               {isNarrowMobile && mobileToolbarMoreOpen && (
                 <div
                   id="mobile-toolbar-actions"
@@ -2070,14 +1949,12 @@ export function AppShell() {
           {!isMobile && (
             <>
               <CloudSyncButton iconButtonSize={TOP_BAR_ICON_BUTTON_SIZE} />
-              <BgTasksButton iconButtonSize={TOP_BAR_ICON_BUTTON_SIZE} />
               {renderProjectTrustWarning(false)}
               {renderChatToolbarActions(false)}
               {renderSessionStatsButton(false)}
             </>
           )}
           {!isMobile && renderMainFileToggle(false)}
-          {!isMobile && renderMainTerminalToggle(false)}
           {isMobile && sessionHasBranches && (
             <BranchNavigator
               tree={branchTree}
@@ -2458,47 +2335,7 @@ export function AppShell() {
           background: "var(--bg-panel)",
           borderBottom: "1px solid var(--border)",
         }}>
-          {/* Mode Switcher Tabs */}
-          <div style={{ display: "flex", alignItems: "stretch", height: "100%", borderRight: "1px solid var(--border)", flexShrink: 0 }}>
-            <button
-              type="button"
-              onClick={() => setRightPanelTab("files")}
-              style={{
-                display: "flex", alignItems: "center", gap: 5, height: "100%", padding: "0 12px",
-                border: "none", borderBottom: rightPanelTab === "files" ? "2px solid var(--accent)" : "2px solid transparent",
-                background: rightPanelTab === "files" ? "var(--bg)" : "transparent",
-                color: rightPanelTab === "files" ? "var(--text)" : "var(--text-muted)",
-                fontSize: 12, fontWeight: rightPanelTab === "files" ? 600 : 400, cursor: "pointer",
-                transition: "all 0.12s ease",
-              }}
-              title="查看文件"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><polyline points="13 2 13 9 20 9" />
-              </svg>
-              文件
-            </button>
-            <button
-              type="button"
-              onClick={() => setRightPanelTab("terminal")}
-              style={{
-                display: "flex", alignItems: "center", gap: 5, height: "100%", padding: "0 12px",
-                border: "none", borderBottom: rightPanelTab === "terminal" ? "2px solid var(--accent)" : "2px solid transparent",
-                background: rightPanelTab === "terminal" ? "var(--bg)" : "transparent",
-                color: rightPanelTab === "terminal" ? "var(--text)" : "var(--text-muted)",
-                fontSize: 12, fontWeight: rightPanelTab === "terminal" ? 600 : 400, cursor: "pointer",
-                transition: "all 0.12s ease",
-              }}
-              title="打开交互终端"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" />
-              </svg>
-              终端
-            </button>
-          </div>
-
-          <div style={{ flex: 1, overflow: "hidden", display: rightPanelTab === "files" ? "block" : "none" }}>
+          <div style={{ flex: 1, overflow: "hidden" }}>
             <TabBar
               tabs={panelTabs}
               activeTabId={activeFileTabId ?? ""}
@@ -2506,11 +2343,6 @@ export function AppShell() {
               onCloseTab={handleCloseFileTab}
             />
           </div>
-          {rightPanelTab === "terminal" && (
-            <div style={{ flex: 1, padding: "0 10px", fontSize: 12, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              命令行终端 (PowerShell / Shell)
-            </div>
-          )}
           <button
             type="button"
             onClick={() => setRightPanelOpen(false)}
@@ -2534,7 +2366,7 @@ export function AppShell() {
         </div>
 
         {/* Only the active viewer is mounted. Lightweight per-tab state is restored on activation. */}
-        <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: rightPanelTab === "files" ? "flex" : "none", flexDirection: "column", paddingBottom: "env(safe-area-inset-bottom)" }}>
+        <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", paddingBottom: "env(safe-area-inset-bottom)" }}>
           {activeFileTab?.filePath ? (
             <FileViewer
               key={`${activeFileTab.id}:${activeFileTab.viewerRevision ?? 0}`}
@@ -2558,30 +2390,11 @@ export function AppShell() {
                 { sourceSessionId: activeFileTab.sourceSessionId },
               )}
             />
-          ) : !terminalTabs.some((tab) => tab.id === activeFileTabId) ? (
+          ) : (
             <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12 }}>
                {translate("files.noneOpen")}
             </div>
-          ) : null}
-          {terminalTabs.map((tab) => (
-            <div key={tab.id} hidden={tab.id !== activeFileTabId} style={{ width: "100%", height: "100%" }}>
-              <TerminalPanel
-                tab={tab}
-                active={rightPanelOpen && tab.id === activeFileTabId}
-                onRestart={() => setTerminalTabs((tabs) => tabs.map((item) => item.id === tab.id ? { ...item, closing: "restart" } : item))}
-                onClosed={() => handleTerminalClosed(tab)}
-                onCloseError={() => setTerminalTabs((tabs) => tabs.map((item) => item.id === tab.id ? { ...item, closing: undefined } : item))}
-              />
-            </div>
-          ))}
-          {/* Terminal view (always kept in DOM to prevent process and scroll loss) */}
-          <div style={{ width: "100%", height: "100%", overflow: "hidden", display: rightPanelTab === "terminal" ? "flex" : "none", flexDirection: "column" }}>
-            <WebTerminal
-              sessionId={selectedSession?.id ?? "global"}
-              cwd={activeCwd ?? undefined}
-              isActive={rightPanelOpen && rightPanelTab === "terminal"}
-            />
-          </div>
+          )}
         </div>
       </div>
     </div>

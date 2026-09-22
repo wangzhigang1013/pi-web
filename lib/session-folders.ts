@@ -39,6 +39,7 @@ export interface CustomFolderGroup {
 export interface SessionTreeStructure {
   customGroups: CustomFolderGroup[];
   workspaceGroups: WorkspaceFolderGroup[];
+  hiddenWorkspaceGroups: WorkspaceFolderGroup[];
   unclassifiedGroup: WorkspaceFolderGroup | null;
 }
 
@@ -50,6 +51,30 @@ const COLLAPSED_FOLDERS_STORAGE_KEY = "pi-web:collapsed-session-folders";
 const SIDEBAR_VIEW_MODE_STORAGE_KEY = "pi-web:sidebar-view-mode";
 const WORKSPACE_ORDER_STORAGE_KEY = "pi-web:workspace-order";
 const ARCHIVED_SESSIONS_STORAGE_KEY = "pi-web:archived-sessions";
+const HIDDEN_WORKSPACES_STORAGE_KEY = "pi-web:hidden-workspaces";
+
+export function loadHiddenWorkspaces(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(HIDDEN_WORKSPACES_STORAGE_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) return new Set(parsed.filter((k): k is string => typeof k === "string"));
+    return new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+export function saveHiddenWorkspaces(keys: ReadonlySet<string>): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (keys.size === 0) window.localStorage.removeItem(HIDDEN_WORKSPACES_STORAGE_KEY);
+    else window.localStorage.setItem(HIDDEN_WORKSPACES_STORAGE_KEY, JSON.stringify([...keys]));
+  } catch {
+    // Persistence is best-effort.
+  }
+}
 
 export function loadArchivedSessionIds(): Set<string> {
   if (typeof window === "undefined") return new Set();
@@ -213,6 +238,7 @@ export function buildSessionTreeStructure({
   unreadSessionIds,
   workspaceOrder = [],
   archivedSessionIds = new Set(),
+  hiddenWorkspaceKeys = new Set(),
   filterQuery = "",
 }: {
   allSessions: readonly SessionInfo[];
@@ -224,6 +250,7 @@ export function buildSessionTreeStructure({
   unreadSessionIds: ReadonlySet<string>;
   workspaceOrder?: readonly string[];
   archivedSessionIds?: ReadonlySet<string>;
+  hiddenWorkspaceKeys?: ReadonlySet<string>;
   filterQuery?: string;
 }): SessionTreeStructure {
   const query = filterQuery.trim().toLowerCase();
@@ -356,6 +383,17 @@ export function buildSessionTreeStructure({
     return bLatest.localeCompare(aLatest);
   });
 
+  const visibleWorkspaceGroups: WorkspaceFolderGroup[] = [];
+  const hiddenWorkspaceGroups: WorkspaceFolderGroup[] = [];
+
+  for (const group of workspaceGroups) {
+    if (hiddenWorkspaceKeys && hiddenWorkspaceKeys.has(group.key) && !group.isCurrent) {
+      hiddenWorkspaceGroups.push(group);
+    } else {
+      visibleWorkspaceGroups.push(group);
+    }
+  }
+
   // 3. Unclassified sessions (sessions not in custom folders and not in any known workspace)
   const unclassifiedSessions = allSessions.filter(
     (s) => !customAssignedSessionIds.has(s.id) && !assignedToWorkspaceIds.has(s.id)
@@ -389,7 +427,8 @@ export function buildSessionTreeStructure({
 
   return {
     customGroups,
-    workspaceGroups,
+    workspaceGroups: visibleWorkspaceGroups,
+    hiddenWorkspaceGroups,
     unclassifiedGroup,
   };
 }

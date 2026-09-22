@@ -17,10 +17,12 @@ import {
   loadPinnedWorkspaces,
   loadWorkspaceOrder,
   loadArchivedSessionIds,
+  loadHiddenWorkspaces,
   saveArchivedSessionIds,
   saveCollapsedFolders,
   savePinnedWorkspaces,
   saveWorkspaceOrder,
+  saveHiddenWorkspaces,
 } from "@/lib/session-folders";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
@@ -125,7 +127,6 @@ interface Props {
     projectKey?: string | null,
   ) => void;
   onOpenFile?: (filePath: string, fileName: string, options?: { sourceSessionId?: string | null; modeHint?: "diff" }) => void;
-  onOpenTerminal?: (cwd: string) => void;
   explorerRefreshKey?: number;
   onExplorerRefresh?: () => void;
   onAtMention?: (relativePath: string, isDir: boolean) => void;
@@ -381,7 +382,7 @@ function PiWebTitle() {
   );
 }
 
-export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange }: Props) {
+export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [sessionListVersion, setSessionListVersion] = useState<number | null>(null);
@@ -438,6 +439,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const [pinnedWorkspaces, setPinnedWorkspaces] = useState<PinnedWorkspace[]>(() => loadPinnedWorkspaces());
   const [workspaceOrder, setWorkspaceOrder] = useState<string[]>(() => loadWorkspaceOrder());
   const [archivedSessionIds, setArchivedSessionIds] = useState<Set<string>>(() => loadArchivedSessionIds());
+  const [hiddenWorkspaceKeys, setHiddenWorkspaceKeys] = useState<Set<string>>(() => loadHiddenWorkspaces());
+  const [hiddenWorkspacesExpanded, setHiddenWorkspacesExpanded] = useState<boolean>(false);
   const [expandedArchivedFolders, setExpandedArchivedFolders] = useState<Set<string>>(() => new Set());
   // Workspace drag & drop reorder state
   const [draggingWorkspaceKey, setDraggingWorkspaceKey] = useState<string | null>(null);
@@ -1034,9 +1037,23 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       unreadSessionIds,
       workspaceOrder,
       archivedSessionIds,
+      hiddenWorkspaceKeys,
       filterQuery: sessionSearchQuery,
     });
-  }, [allSessions, recentProjects, pinnedWorkspaces, selectedProject?.key, runningSessionIds, unreadSessionIds, workspaceOrder, archivedSessionIds, sessionSearchQuery]);
+  }, [allSessions, recentProjects, pinnedWorkspaces, selectedProject?.key, runningSessionIds, unreadSessionIds, workspaceOrder, archivedSessionIds, hiddenWorkspaceKeys, sessionSearchQuery]);
+
+  const handleToggleHideWorkspace = useCallback((workspaceKey: string) => {
+    setHiddenWorkspaceKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(workspaceKey)) {
+        next.delete(workspaceKey);
+      } else {
+        next.add(workspaceKey);
+      }
+      saveHiddenWorkspaces(next);
+      return next;
+    });
+  }, []);
 
   const handleToggleArchive = useCallback((sessionId: string) => {
     setArchivedSessionIds((prev) => {
@@ -1819,6 +1836,53 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                         <line x1="6" y1="1" x2="6" y2="11" /><line x1="1" y1="6" x2="11" y2="6" />
                       </svg>
                     </button>
+                    {group.isCurrent ? (
+                      <button
+                        disabled
+                        title={t("sidebar.cannotHideCurrent")}
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          width: 20, height: 20, padding: 0,
+                          background: "none", border: "none",
+                          borderRadius: 4, color: "var(--text-dim)",
+                          opacity: 0.3,
+                          cursor: "not-allowed", flexShrink: 0,
+                        }}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                          <line x1="1" y1="1" x2="23" y2="23" />
+                        </svg>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleHideWorkspace(group.key);
+                        }}
+                        title={t("sidebar.hideWorkspace")}
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          width: 20, height: 20, padding: 0,
+                          background: "none", border: "none",
+                          borderRadius: 4, color: "var(--text-muted)",
+                          cursor: "pointer", flexShrink: 0,
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = "var(--bg-hover)";
+                          e.currentTarget.style.color = "var(--text)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = "none";
+                          e.currentTarget.style.color = "var(--text-muted)";
+                        }}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                          <line x1="1" y1="1" x2="23" y2="23" />
+                        </svg>
+                      </button>
+                    )}
                     {group.isPinned && group.families.length === 0 && (
                       <button
                         onClick={(e) => {
@@ -2052,6 +2116,169 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 )}
               </div>
             )}
+
+            {/* Hidden Workspaces Section */}
+            {treeStructure.hiddenWorkspaceGroups.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", marginTop: 8, paddingTop: 6, borderTop: "1px dashed var(--border)" }}>
+                <div
+                  onClick={() => setHiddenWorkspacesExpanded((prev) => !prev)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    height: 28,
+                    padding: "0 8px 0 10px",
+                    cursor: "pointer",
+                    color: "var(--text-dim)",
+                    fontSize: 12,
+                    fontWeight: 500,
+                    userSelect: "none",
+                    borderRadius: 6,
+                    margin: "1px 4px",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = "var(--text-muted)";
+                    e.currentTarget.style.background = "var(--bg-hover)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = "var(--text-dim)";
+                    e.currentTarget.style.background = "transparent";
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <svg
+                      width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8"
+                      strokeLinecap="round" strokeLinejoin="round"
+                      style={{
+                        transform: hiddenWorkspacesExpanded ? "rotate(0deg)" : "rotate(-90deg)",
+                        transition: "transform 0.15s",
+                      }}
+                    >
+                      <polyline points="2 3.5 5 6.5 8 3.5" />
+                    </svg>
+                    <span>📁 {t("sidebar.hiddenWorkspaces", { count: treeStructure.hiddenWorkspaceGroups.length })}</span>
+                  </div>
+                </div>
+
+                {hiddenWorkspacesExpanded && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 4, opacity: 0.85 }}>
+                    {treeStructure.hiddenWorkspaceGroups.map((group) => {
+                      const folderKey = `ws_${group.key}`;
+                      const isCollapsed = collapsedFolders.has(folderKey);
+                      return (
+                        <div key={group.key} style={{ display: "flex", flexDirection: "column" }}>
+                          <div
+                            onClick={() => toggleFolderCollapse(folderKey)}
+                            title={`${displayCwd(group.root, homeDir)}`}
+                            style={{
+                              display: "flex", alignItems: "center", gap: 7,
+                              height: 32, padding: "0 8px 0 10px",
+                              cursor: "pointer",
+                              borderRadius: 6,
+                              margin: "1px 4px",
+                              background: "transparent",
+                              userSelect: "none",
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                          >
+                            <svg
+                              width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8"
+                              strokeLinecap="round" strokeLinejoin="round"
+                              style={{
+                                flexShrink: 0,
+                                transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
+                                transition: "transform 0.15s",
+                                color: "var(--text-dim)",
+                              }}
+                            >
+                              <polyline points="2 3.5 5 6.5 8 3.5" />
+                            </svg>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: "var(--text-dim)" }}>
+                              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                            </svg>
+                            <span
+                              style={{
+                                fontSize: 12,
+                                color: "var(--text-muted)",
+                                flex: 1,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {group.name}
+                            </span>
+                            <span style={{ fontSize: 10, color: "var(--text-dim)", padding: "1px 5px", background: "var(--bg-hover)", borderRadius: 6 }}>
+                              {group.families.length}
+                            </span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleHideWorkspace(group.key);
+                              }}
+                              title={t("sidebar.unhideWorkspace")}
+                              style={{
+                                display: "flex", alignItems: "center", gap: 3,
+                                padding: "2px 7px",
+                                background: "var(--bg-hover)", border: "1px solid var(--border)",
+                                borderRadius: 4, color: "var(--text-muted)",
+                                cursor: "pointer", flexShrink: 0,
+                                fontSize: 11,
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = "var(--bg-selected)";
+                                e.currentTarget.style.color = "var(--accent)";
+                                e.currentTarget.style.borderColor = "var(--accent)";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = "var(--bg-hover)";
+                                e.currentTarget.style.color = "var(--text-muted)";
+                                e.currentTarget.style.borderColor = "var(--border)";
+                              }}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                <circle cx="12" cy="12" r="3" />
+                              </svg>
+                              <span>{t("sidebar.unhideWorkspace")}</span>
+                            </button>
+                          </div>
+                          {!isCollapsed && (
+                            <div style={{ display: "flex", flexDirection: "column", marginLeft: 15, paddingLeft: 2, borderLeft: "1px solid color-mix(in srgb, var(--border) 60%, transparent)" }}>
+                              {group.families.map((family) => {
+                                const familySessions = [family.root, ...family.subagents];
+                                const displaySession = family.latestModified === family.root.modified
+                                  ? family.root
+                                  : { ...family.root, modified: family.latestModified };
+                                return (
+                                  <SessionItem
+                                    key={family.root.id}
+                                    session={displaySession}
+                                    isSelected={familySessions.some((session) => session.id === selectedSessionId)}
+                                    isRunning={familySessions.some((session) => runningSessionIds.has(session.id))}
+                                    isUnread={familySessions.some((session) => unreadSessionIds.has(session.id))}
+                                    onClick={() => handleSelectSessionFromList(family.root)}
+                                    onRenamed={loadSessions}
+                                    onDeleted={(id) => {
+                                      onSessionDeleted?.(id);
+                                      loadSessions();
+                                    }}
+                                    onToggleArchive={() => handleToggleArchive(family.root.id)}
+                                    isArchived={false}
+                                    depth={1}
+                                  />
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
       </div>
       </SessionSearch>
@@ -2101,17 +2328,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               </svg>
               {t("files.explorer")}
             </button>
-            {onOpenTerminal && (
-              <ToolbarIconButton
-                onClick={() => onOpenTerminal(selectedCwd ?? selectedCwdProp!)}
-                title={t("terminal.open")}
-                color="var(--text-dim)"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" />
-                </svg>
-              </ToolbarIconButton>
-            )}
             {explorerOpen && changesCount > 0 && (
               <ToolbarIconButton
                 onClick={() => setChangesCollapsed((v) => !v)}

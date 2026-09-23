@@ -524,16 +524,22 @@ function ChangeRow({
   status,
   cwd,
   onOpenFile,
+  onAtMention,
   t,
 }: {
   status: GitFileStatus;
   cwd: string;
   onOpenFile: OpenFileHandler;
+  onAtMention?: (relativePath: string, isDir: boolean) => void;
   t: Translate;
 }) {
   const [hovered, setHovered] = useState(false);
   const name = getFileName(status.filePath);
   const rel = getRelativeFilePath(status.filePath, cwd);
+  // Split the path so the directory part ellipsizes while the file name stays fully visible
+  const lastSlash = rel.lastIndexOf("/");
+  const dirPart = lastSlash >= 0 ? rel.slice(0, lastSlash + 1) : "";
+  const baseName = lastSlash >= 0 ? rel.slice(lastSlash + 1) : rel;
   return (
     <div
       onClick={() => onOpenFile(status.filePath, name, { modeHint: "diff" })}
@@ -551,6 +557,7 @@ function ChangeRow({
         background: hovered ? "var(--bg-hover)" : "transparent",
         borderRadius: 4,
         userSelect: "none",
+        position: "relative",
       }}
     >
       <GitStatusBadge status={status} t={t} />
@@ -558,53 +565,109 @@ function ChangeRow({
         {getFileIcon(name, 13)}
       </span>
       <span
+        title={status.filePath}
         style={{
           fontSize: 12,
           color: "var(--text)",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
+          display: "flex",
+          alignItems: "center",
+          minWidth: 0,
           flex: 1,
         }}
       >
-        {rel}
-      </span>
-      {hovered && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            fetch("/api/files/reveal", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ path: status.filePath, isDir: false }),
-            }).catch((err) => console.error("Failed to open path in explorer:", err));
-          }}
-          title="在 Windows 资源管理器中定位此文件"
+        {dirPart && (
+          <span
+            style={{
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              flex: "0 1 auto",
+              minWidth: 0,
+              color: "var(--text-dim)",
+            }}
+          >
+            {dirPart}
+          </span>
+        )}
+        <span
           style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "0 5px",
-            height: 18,
-            background: "var(--bg-panel)",
-            border: "1px solid var(--border)",
-            borderRadius: 3,
-            color: "var(--text-muted)",
-            cursor: "pointer",
-            fontSize: 10,
-            fontWeight: 600,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
             whiteSpace: "nowrap",
             flexShrink: 0,
+            maxWidth: "100%",
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
         >
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-            <polyline points="14 11 18 15 14 19" />
-          </svg>
-        </button>
+          {baseName}
+        </span>
+      </span>
+      {hovered && (
+        <div style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", display: "flex", alignItems: "center", gap: 4 }}>
+          {onAtMention && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAtMention(rel, false);
+              }}
+              title={t("files.insertPath")}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 4,
+                padding: "0 8px",
+                height: 20,
+                background: "var(--bg-panel)",
+                border: "1px solid var(--border)",
+                borderRadius: 4,
+                color: "var(--accent)",
+                cursor: "pointer",
+                fontSize: 11,
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+              }}
+            >
+              <MentionIcon />
+              {t("files.mention")}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              fetch("/api/files/reveal", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ path: status.filePath, isDir: false }),
+              }).catch((err) => console.error("Failed to open path in explorer:", err));
+            }}
+            title="在 Windows 资源管理器中定位此文件"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "0 5px",
+              height: 20,
+              background: "var(--bg-panel)",
+              border: "1px solid var(--border)",
+              borderRadius: 4,
+              color: "var(--text-muted)",
+              cursor: "pointer",
+              fontSize: 10,
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              <polyline points="14 11 18 15 14 19" />
+            </svg>
+          </button>
+        </div>
       )}
     </div>
   );
@@ -1104,7 +1167,14 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
             <span style={{ color: GIT_STATUS_COLORS.deleted, fontFamily: "var(--font-mono)" }}>-{gitLineStats.deletions}</span>
           </div>
           {gitFiles.map((status) => (
-            <ChangeRow key={status.filePath} status={status} cwd={cwd} onOpenFile={onOpenFile} t={t} />
+            <ChangeRow
+              key={status.filePath}
+              status={status}
+              cwd={cwd}
+              onOpenFile={onOpenFile}
+              onAtMention={onAtMention}
+              t={t}
+            />
           ))}
         </div>
       )}

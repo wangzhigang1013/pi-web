@@ -459,7 +459,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
           {sectionHost("usage", <UsageConfig />)}
           {sectionHost("antigravity", <AntigravityDetail />)}
           {sectionHost("chehejia", <ChehejiaDetail onRefreshParent={onSessionReloaded} />)}
-          {sectionHost("models", <ModelsConfig embedded onClose={onClose} />)}
+          {sectionHost("models", <ModelsConfig embedded cwd={cwd} onClose={onClose} />)}
           {cwd && sectionHost("skills", <SkillsConfig embedded key={cwd} cwd={cwd} onClose={onClose} />)}
           {cwd && sectionHost("agents", <AgentsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} />)}
           {cwd && sectionHost("plugins", <PluginsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} />)}

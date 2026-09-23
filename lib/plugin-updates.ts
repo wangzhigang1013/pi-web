@@ -9,6 +9,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { gt, maxSatisfying, rcompare, valid, validRange } from "semver";
 import type { PluginScope, PluginUpdateResult } from "@/lib/api-types";
+import { nodeCliInvocation } from "./node-cli";
 import { getProjectTrustStatus } from "./project-trust";
 
 const execFileAsync = promisify(execFile);
@@ -97,14 +98,14 @@ async function runCommand(
   args: string[],
   options: { cwd: string; env?: NodeJS.ProcessEnv },
 ): Promise<string> {
-  const isWindows = process.platform === "win32";
-  const cmd = isWindows && command === "npm" ? "npm.cmd" : command;
-  const { stdout } = await execFileAsync(cmd, args, {
+  // A bare `npm` resolves to `npm.cmd` on Windows, which `execFile` cannot
+  // spawn (CVE-2024-27980); run the bundled `npm-cli.js` through `node`.
+  const invocation = command === "npm" ? nodeCliInvocation("npm", args) : { command, args };
+  const { stdout } = await execFileAsync(invocation.command, invocation.args, {
     cwd: options.cwd,
     env: options.env ? { ...process.env, ...options.env } : process.env,
     encoding: "utf8",
     timeout: 10_000,
-    ...(isWindows ? { shell: true } : {}),
   });
   return stdout;
 }

@@ -1,7 +1,8 @@
-import { configureHttpDispatcher } from "@/lib/http-dispatcher";
+import { applyPersistedProxySettings, configureHttpDispatcher } from "@/lib/http-dispatcher";
 import { closeAllAgentEventStreams } from "@/lib/agent-event-stream";
 
 export function registerNodeInstrumentation(): void {
+  applyPersistedProxySettings();
   configureHttpDispatcher();
 
   // In production Next 16 answers SIGINT/SIGTERM with server.close() and waits

@@ -33,6 +33,7 @@ import { AgentsConfig } from "./AgentsConfig";
 import { PluginsConfig } from "./PluginsConfig";
 import { UsageConfig } from "./UsageConfig";
 import { ConfigButton, ConfigSwitch } from "./SettingsUi";
+import { ProxySettingsSection } from "./ProxyToggle";
 
 interface Props {
   cwd: string | null;
@@ -290,6 +291,8 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
           {shellError && <p role="alert" className="settings-general-error">{shellError}</p>}
         </section>
       )}
+
+      <ProxySettingsSection />
 
       <section className="settings-general-section">
         <h3 className="settings-general-heading">{t("settings.pushPermission")}</h3>

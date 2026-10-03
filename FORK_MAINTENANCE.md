@@ -21,3 +21,24 @@
 ### 4. 侧边栏工作区隐藏与归档抽屉 (Hide & Unhide Workspaces)
 - **悬停隐藏**：在左侧工作区文件夹标题栏悬停显示“闭眼”隐藏按钮，可将长期不活跃的项目文件夹从主视图隐藏。
 - **底部抽屉找回**：底部常驻“已隐藏的工作区 (N)”折叠抽屉，支持单键“恢复显示”，全局搜索仍可直接检索穿透。
+
+### 5. Markdown 预览与源码内联批注（Preview Annotations → Agent 一键修订）
+- **选区就地浮动气泡（Popover Anchor）**：在右侧文件预览（Markdown 渲染后视图或代码源码视图）中选中文本，输入卡片**直接紧贴定位在选区下方**弹出，视线 0 跳跃（快捷键 `Ctrl+Enter` 快速暂存，`Esc` 取消）。
+- **正文持久化视觉高亮（Highlight Layer）**：批注保存后，正文对应行/段落自动渲染浅黄色柔和背景与左侧金线，鼠标悬停亮起，点击正文高亮直接打开并定位对应批注。
+- **右下角收敛胶囊 + 侧滑抽屉（Capsule Drawer）**：彻底移除横跨屏幕中间底部的遮挡浮条，改为右下角紧凑胶囊徽章（`[ 📝 N 条批注 ]`），点击向上滑出专属卡片抽屉，支持悬停段落闪烁、点击平滑滚动居中定位、编辑与删除。
+- **双锚点定位**：通过 `rehypeSourceLines` 插件在渲染后 DOM 注入源码行号，搭配引文上下文（W3C TextQuote 模式：quote + prefix + suffix），即使文件微调也能准确定位修改点。
+- **攒批一键直达**：点击 `[发送 N 条批注]` 自动将结构化清单通过 `ChatInputHandle.submitText()` 注入当前会话，流式期间自动排队为 `followUp`，指示 Agent 定点修改源文件。
+- **本地隔离持久化**：批注基于 `localStorage` 按文件路径与会话隔离存储，刷新不丢失，绝不污染源文件本身。
+- **技术决策记录**：详见 `docs/adr/0007-preview-annotations.md`。
+
+### 6. 工作区文件浏览器右迁与双栏协同工作台（File Explorer Right Panel Migration）
+- **左侧会话彻底瘦身**：将原先挤占在左侧侧边栏下半部分的文件浏览器彻底剥离，左侧 100% 垂直高度完全归还给会话树与工作区管理，彻底解决长会话列表与文件列表相互挤压、上下拖拽分栏的体验痛点。
+- **右侧面板响应式双栏工作区（方案 C）**：
+  - **无打开文件时**：右侧面板 100% 满宽呈现 `RightPanelExplorer`，顶栏直观显示当前项目名称与快捷操作（Windows 资源管理器一键直达、全量文件搜索、上传文件、变动文件筛选、刷新）。
+  - **打开文件时**：顶栏 TabBar 左侧常驻 `[📁]` 目录树快捷切换按钮；左侧以 240px 子栏展示文件树，右侧展示 `FileViewer`（代码/Markdown 预览/内联批注）；需要专注阅读或批注时，点击 `[📁]` 即可收起树栏独享全宽。
+  - **平滑关闭回退**：关闭最后一个打开的 Tab 时，右侧面板不突兀关闭，而是平滑过渡回工作区文件浏览器，符合主流 IDE（VS Code / WebStorm）直觉。
+  - **状态记忆**：右侧子栏展开/折叠状态在浏览器 `localStorage` 中自动记忆（`pi-right-panel-explorer-open`）。
+- **解耦与测试覆盖**：
+  - 独立封装 `components/RightPanelExplorer.tsx`，集中管理搜索、上传、刷新动画与资源管理器调起逻辑。
+  - `components/SessionSidebar.tsx` 与 `components/AppShell.tsx` 架构解耦，新增 `components/RightPanelExplorer.test.mjs` 测试覆盖。
+

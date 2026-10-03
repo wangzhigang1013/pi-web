@@ -93,6 +93,7 @@ app/api/
   push/config/route.ts            GET VAPID public key for push subscriptions
   push/subscribe/route.ts         POST register a push subscription
   tools/settings/route.ts         GET/PUT shell tool settings (PowerShell on Windows)
+  proxy/route.ts                  GET proxy state + reachability | POST toggle it for this process
 
 lib/
   agent-client.ts      typed fetch helper for /api/agent commands
@@ -109,6 +110,8 @@ lib/
   rpc-manager.ts      AgentSessionWrapper + registry + startRpcSession
   session-reader.ts   SessionManager wrappers + path cache + buildSessionContext adapter
   subagent-settings.ts  read/write ~/.pi/agent/agents/settings.json
+  proxy-settings.ts    proxy URL validation plus a TCP reachability probe
+  proxy-preference.ts  browser-persisted proxy address for the settings input
   tool-presets.ts     PRESET_NONE/READ_ONLY/DEFAULT/FULL + getPresetFromTools()
   tool-preset-preference.ts  browser-persisted default for fresh sessions
   types.ts            shared TypeScript types
@@ -128,6 +131,7 @@ components/
   EnabledModelsSection.tsx  model switches inside ModelsConfig, backed by enabledModels
   AgentsConfig.tsx    built-in subagent toggle + agent profile editor
   PluginsConfig.tsx   modal for installed package plugins
+  ProxyToggle.tsx     proxy icon button (top bar) + proxy section (settings panel)
   SkillsConfig.tsx    modal for loaded/search/installable skills
   FileExplorer.tsx    file tree inside sidebar
   FileIcons.tsx       file icon helpers
@@ -139,6 +143,7 @@ hooks/
   useAudio.ts         completion sound + browser AudioContext unlock
   useDragDrop.ts      shared drag/drop state
   useIsMobile.ts      responsive breakpoint hook
+  useProxySettings.ts proxy toggle state backed by /api/proxy
   useTheme.ts         theme state
 ```
 
@@ -254,6 +259,13 @@ Newer pi emits `compaction_start` / `compaction_end`; older versions emitted `au
 - OAuth/device-code/manual-code flows are streamed by `GET /api/auth/login/[provider]`; manual code responses POST back with a short-lived token stored in `globalThis.__piLoginCallbacks`.
 - API-key routes store and remove keys through `AuthStorage`. Status endpoints must never return the raw key.
 - The model test route is `app/api/models-config/test/route.ts`; `app/api/models/test/` is not a real route.
+
+### HTTP proxy toggle
+- The switch drives `setHttpProxy()` in `lib/http-dispatcher.ts`, which writes `process.env.HTTP_PROXY`/`HTTPS_PROXY` (plus local `NO_PROXY` entries) and **rebuilds the global undici dispatcher**. `EnvHttpProxyAgent` reads the proxy environment only in its constructor, so skipping the rebuild silently keeps the old proxy. Model calls go through global fetch, so the next request already uses the new dispatcher — no process restart, no session reload.
+- It deliberately does **not** touch `~/.pi/agent/settings.json` (`httpProxy`): Pi Web persists its own proxy configuration to `~/.pi/agent/web-proxy.json` so states survive restarts, while CLI `pi` stays independent; see `docs/adr/0006-http-proxy-toggle.md`.
+- `NO_PROXY` always absorbs `localhost,127.0.0.1,::1`: Pi Web reaches its own Next server, SSE endpoints, and local tool servers over `127.0.0.1`, and proxying those ranges from pointless to broken. `mergeLocalNoProxy()` merges instead of overwriting a user-provided list.
+- `/api/proxy` probes the proxy port on every call but **never blocks enabling** on a failed probe, and there is no silent direct fallback. "Proxy app not running" is exactly the failure this feature exists to make visible, so it is reported (red dot, `settings.proxyUnreachable`) rather than hidden.
+- The address is validated and canonicalized server-side (`lib/proxy-settings.ts`): bare `host:port` is accepted, SOCKS/PAC and paths are rejected because neither pi nor undici supports them.
 
 ### Completion sound
 - `hooks/useAudio.ts` stores the toggle in `localStorage` as `pi-sound-enabled` and reuses one `AudioContext`.

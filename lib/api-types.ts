@@ -15,6 +15,20 @@ export interface ShellToolSettingsResponse {
   powerShellEnabled: boolean;
 }
 
+/** `/api/proxy` 返回的代理开关状态。 */
+export interface ProxySettingsResponse {
+  /** 当前进程是否正在使用代理。 */
+  enabled: boolean;
+  /** 当前生效的代理地址，未启用时为 null。 */
+  url: string | null;
+  /** 代理端口是否可建立 TCP 连接（代理软件是否在运行）。 */
+  reachable: boolean;
+  /** 探测目标主机，未启用代理时为 null。 */
+  host: string | null;
+  /** 探测目标端口，未启用代理时为 null。 */
+  port: number | null;
+}
+
 export interface SkillSearchResult {
   package: string;
   installs: string;

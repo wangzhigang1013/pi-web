@@ -74,11 +74,11 @@ async function getUsageAndPricing(): Promise<{
   const usageMap: Record<string, { tokens: string; cost: string }> = {};
 
   try {
-    // 1. 获取额度概要（3 秒超时）
+    // 1. 获取额度概要（6 秒超时）
     const { stdout: summaryOut } = await execFileAsync(
       eptBin,
       ["usage", "--summary-only", "--json"],
-      { timeout: 3000, encoding: "utf8" },
+      { timeout: 6000, encoding: "utf8" },
     );
 
     if (summaryOut) {
@@ -102,11 +102,11 @@ async function getUsageAndPricing(): Promise<{
   }
 
   try {
-    // 2. 获取完整 usage 报告解析价格与历史用量（4 秒超时）
+    // 2. 获取完整 usage 报告解析价格与历史用量（6 秒超时）
     const { stdout: fullOut } = await execFileAsync(
       eptBin,
       ["usage"],
-      { timeout: 4000, encoding: "utf8" },
+      { timeout: 6000, encoding: "utf8" },
     );
 
     if (fullOut) {

@@ -211,7 +211,6 @@ interface Props {
    */
   writtenFiles?: WrittenFile[];
   onCompact?: () => void;
-  isCompacting?: boolean;
   compactError?: string | null;
 }
 
@@ -651,7 +650,6 @@ function AssistantMessageView({
   searchBlock,
   writtenFiles,
   onCompact,
-  isCompacting,
   compactError,
 }: {
   message: AssistantMessage;
@@ -669,7 +667,6 @@ function AssistantMessageView({
   searchBlock?: AssistantContentBlock;
   writtenFiles?: WrittenFile[];
   onCompact?: () => void;
-  isCompacting?: boolean;
   compactError?: string | null;
 }) {
   const { t } = useI18n();

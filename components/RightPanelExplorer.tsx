@@ -19,6 +19,8 @@ export interface RightPanelExplorerProps {
   subpanel?: boolean;
   /** 折叠该子栏的回调（仅在 subpanel 模式下可用）。 */
   onCloseSubpanel?: () => void;
+  /** 在工作区目录打开终端标签。 */
+  onOpenTerminal?: (cwd: string) => void;
 }
 
 function ExplorerToolbarButton({
@@ -84,6 +86,7 @@ export function RightPanelExplorer({
   onAtMentions,
   subpanel = false,
   onCloseSubpanel,
+  onOpenTerminal,
 }: RightPanelExplorerProps) {
   const { t } = useI18n();
   const fileExplorerRef = useRef<FileExplorerHandle>(null);
@@ -184,6 +187,17 @@ export function RightPanelExplorer({
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <circle cx="11" cy="11" r="7" />
             <path d="m20 20-4-4" />
+          </svg>
+        </ExplorerToolbarButton>
+
+        <ExplorerToolbarButton
+          onClick={() => onOpenTerminal?.(cwd)}
+          title={t("terminal.open")}
+          disabled={!onOpenTerminal}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polyline points="4 17 10 11 4 5" />
+            <line x1="12" y1="19" x2="20" y2="19" />
           </svg>
         </ExplorerToolbarButton>
 

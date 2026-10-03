@@ -180,6 +180,8 @@ components/
   FileExplorer.tsx         file tree in the sidebar
   FileIcons.tsx            file icon helpers
   FileViewer.tsx           file content in a tab
+  TerminalPanel.tsx        interactive shell in a panel tab (xterm.js over the server PTY)
+  terminal-tab-state.ts    session-only restore of a workspace's open terminals
   TabBar.tsx               file panel tab bar (file and terminal tabs)
   ProxyToggle.tsx          proxy icon button (top bar) + proxy section in Settings
   RightPanelExplorer.tsx   workspace file browser in the right panel (search, upload, reveal, refresh)

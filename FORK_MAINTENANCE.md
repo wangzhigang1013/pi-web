@@ -42,3 +42,19 @@
   - 独立封装 `components/RightPanelExplorer.tsx`，集中管理搜索、上传、刷新动画与资源管理器调起逻辑。
   - `components/SessionSidebar.tsx` 与 `components/AppShell.tsx` 架构解耦，新增 `components/RightPanelExplorer.test.mjs` 测试覆盖。
 
+
+---
+
+## 上游 v0.10.0 同步状态（2026-10）
+
+- **已完整合并**：官方 `v0.10.0`（pi 1.0.0 引擎、原生 MCP 设置面板、Code mode 上下文管理、模型/工具面板调整、安全修复）。合并提交：`2e12cf0`、`539c908`。
+- **终端功能已恢复**：`v0.10.0` 自带交互式终端（`components/TerminalPanel.tsx` + 服务端 PTY），此前 fork 曾主动移除；现按「上游有就恢复」的约定重新引入：
+  - 服务端：`app/api/terminal/**`、`lib/terminal-manager.ts`、`bin/prepare-terminal.js`（`postinstall`）。
+  - 客户端：`lib/terminal-client.ts`、`components/TerminalPanel.tsx`、`components/terminal-tab-state.ts`、`app/globals.css` 中的 `@import "@xterm/xterm/css/xterm.css"` 与 `.terminal-xterm` 样式。
+  - 依赖：`node-pty@1.2.0-beta.15`（原生模块），`@xterm/xterm`、`@xterm/addon-fit` 已在依赖中。
+  - 入口：右侧面板文件浏览器顶栏的终端按钮（`RightPanelExplorer` 的 `onOpenTerminal`），标签与文件标签共用 `TabBar`。
+- **窗口宽度对齐**：`.settings-general` 的 `max-width` 由 fork 的 720px 回归上游的 680px，以满足上游 `SettingsUi.test.mjs` 的断言。
+- **已知环境性失败（非回归）**：本机（Windows）下上游自带的以下测试在纯净 `v0.10.0` 上同样失败，与本 fork 无关：
+  - 依赖 DOM/浏览器环境的组件测试（`McpConfig`、`McpAddServer`、`McpSignIn`、`ProjectTrustDialog`、`AppShell.file-viewer-state` 等）。
+  - 依赖 POSIX 路径/符号链接的测试（`lib/regular-file`、`lib/directory-browser`、`project-trust` 部分用例）。
+  - `lib/terminal-manager.test.mjs` 中 `pty.pid > 0` 的断言：Windows ConPTY 下 node-pty 的 `pid` 恒为 0（PTY 本身可正常工作，shell 会回显真实 PID）。

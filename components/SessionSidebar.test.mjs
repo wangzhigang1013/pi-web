@@ -40,19 +40,11 @@ test("only Shift+click bypasses session deletion confirmation", () => {
   );
 });
 
-test("persists and exposes a vertical session/explorer resize handle", () => {
-  assert.match(source, /axis: "vertical"/);
-  assert.match(source, /storageKey: "pi-web:sidebar-session-pane-height"/);
-  assert.match(source, /Math\.round\(\(paneHeight \+ explorerHeight\) \/ 2\)/);
+test("maximizes session pane vertical space without sidebar explorer conflicts", () => {
   assert.match(source, /ref=\{sessionPaneRef\}[\s\S]*?<SessionSearch/);
-  assert.match(source, /data-resize-handle="sidebar-sections"/);
-  assert.match(source, /sidebar-section-resize-handle/);
-  assert.match(globalStyles, /\.sidebar-section-resize-handle:focus-visible::after/);
-  assert.doesNotMatch(globalStyles, /\.sidebar-section-resize-handle:focus-visible \{[^}]*outline: 2px solid var\(--accent\)/);
-  assert.match(globalStyles, /\.sidebar-section-resize-handle::after[\s\S]*?background: transparent/);
-  assert.match(source, /borderTop: "1px solid var\(--border\)"/);
-  assert.match(source, /var\(--sidebar-session-pane-height, 320px\)/);
-  assert.match(source, /minHeight: explorerOpen \? EXPLORER_PANE_MIN_HEIGHT : 0/);
+  assert.doesNotMatch(source, /data-resize-handle="sidebar-sections"/);
+  assert.doesNotMatch(source, /sidebar-section-resize-handle/);
+  assert.doesNotMatch(source, /pi-web:sidebar-session-pane-height/);
 });
 
 test("does not register row-level session deletion shortcuts", () => {

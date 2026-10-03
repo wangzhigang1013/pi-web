@@ -84,6 +84,10 @@ app/api/
   push/config/route.ts             GET VAPID public key
   push/subscribe/route.ts          POST register a push subscription
   app-update/route.ts              GET current vs latest published pi-web version
+  proxy/route.ts                   GET proxy state + TCP reachability | POST toggle it for this process
+  chehejia/models/route.ts         GET company (chehejia) gateway models + EPT quota/pricing | POST persist model map
+  antigravity/accounts/route.ts    GET Antigravity accounts and quota | POST switch the primary account
+  usage/route.ts                   GET aggregated token usage from local session files
 
 lib/
   agent-client.ts           typed fetch helper for /api/agent commands
@@ -95,6 +99,12 @@ lib/
   pi-sdk-internals.ts       loader for SDK modules the package does not export (MCP connection, config, OAuth)
   tool-presets.ts           PRESET_NONE/READ_ONLY/DEFAULT/FULL + getPresetFromTools()
   tool-preset-preference.ts browser-persisted default preset for fresh sessions
+  proxy-settings.ts         proxy URL validation plus a TCP reachability probe
+  proxy-preference.ts       browser-persisted proxy address for the settings input
+  http-dispatcher.ts        setHttpProxy(): writes the proxy env vars and rebuilds the global undici dispatcher
+  annotations.ts            preview annotations: localStorage store, per file path and session
+  annotation-anchor.ts      quote/prefix/suffix anchoring (W3C TextQuote) for preview annotations
+  usage-stats.ts            token/cost aggregation per day, month and model from session files
   builtin-extensions.ts     codemode / tool-search / mcp built-ins, sandbox self-test, -builtin: switches
   codemode-settings.ts      Code mode automatic/always (+codemode in global defaultTools), codemode.mode and inlineBudget; project overrides
   codemode-view.ts          display helpers for codemode cards
@@ -171,6 +181,12 @@ components/
   FileIcons.tsx            file icon helpers
   FileViewer.tsx           file content in a tab
   TabBar.tsx               file panel tab bar (file and terminal tabs)
+  ProxyToggle.tsx          proxy icon button (top bar) + proxy section in Settings
+  RightPanelExplorer.tsx   workspace file browser in the right panel (search, upload, reveal, refresh)
+  PreviewAnnotations.tsx   selection popover, highlight layer and annotation drawer for file previews
+  UsageConfig.tsx          Settings › Usage: daily/monthly token statistics by model
+  ChehejiaDetail.tsx       Settings › 公司模型: company gateway models, quota and pricing
+  AntigravityDetail.tsx    Settings › Antigravity: multi-account quota and primary-account switch
 
 hooks/
   useAgentSession.ts       messages, streaming, SSE, fork/navigate, reconciliation; built-in slash commands (/session, bare /mcp)
@@ -179,6 +195,7 @@ hooks/
   useIsMobile.ts           responsive breakpoint
   useKeyboardShortcuts.ts  Esc stops the running agent unless a field or nearer handler took it; Ctrl+Alt+N
   useTheme.ts              theme state
+  useProxySettings.ts      proxy toggle state backed by /api/proxy
 ```
 
 ---
@@ -198,6 +215,8 @@ Design decisions and traps live in `docs/agents/`, one note per area. Read every
 - [settings-ui.md](docs/agents/settings-ui.md): Plugins and Skills routes, sidebar group switches, the shared `SettingsUi` blocks every settings panel and add pane uses. Files: `app/api/plugins/**`, `app/api/skills/**`, `components/SettingsUi.tsx`, `components/settings-ui-helpers.ts`, `components/SkillsConfig.tsx`, `components/PluginsConfig.tsx`; also before adding a settings section or add pane.
 - [subagents.md](docs/agents/subagents.md): the built-in subagent setting, profiles and their files, run status, completion notifications. Files: `lib/subagent*.ts`, `app/api/subagents/**`, `components/AgentsConfig.tsx`.
 - [client-platform.md](docs/agents/client-platform.md): mobile software keyboard and viewport height, completion sound. Files: `hooks/useViewportHeight.ts`, `hooks/useAudio.ts`, the keyboard-open CSS.
+
+Fork-only features (not in upstream) are listed in [FORK_MAINTENANCE.md](FORK_MAINTENANCE.md): the HTTP proxy toggle, Markdown preview annotations, the right-panel file explorer, cloud sync of `~/.pi`, company/antigravity model panels and usage statistics. The HTTP proxy toggle's rationale is in `docs/adr/0006-http-proxy-toggle.md` and preview annotations in `docs/adr/0007-preview-annotations.md`.
 
 ---
 

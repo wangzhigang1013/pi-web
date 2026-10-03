@@ -1789,6 +1789,58 @@
   font-size: 11px;
 }
 
+.settings-proxy-input {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  box-sizing: border-box;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-panel);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.settings-proxy-input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.settings-proxy-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.settings-proxy-status::before {
+  content: "";
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+
+.settings-proxy-status.is-ok::before {
+  background: #22c55e;
+}
+
+.settings-proxy-status.is-warn::before {
+  background: #ef4444;
+}
+
+.settings-proxy-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
 @media (max-width: 640px) {
   .config-add-source-example.has-label {
     grid-template-columns: minmax(0, 1fr);

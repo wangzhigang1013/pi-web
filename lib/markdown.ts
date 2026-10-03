@@ -9,7 +9,7 @@ import remarkMath from "remark-math";
 import type { Plugin } from "unified";
 import type { Extension } from "micromark-util-types";
 
-const markdownSanitizeSchema = {
+export const markdownSanitizeSchema = {
   ...defaultSchema,
   attributes: {
     ...defaultSchema.attributes,
@@ -58,6 +58,48 @@ function replaceNotPrecededBy(
 // The closing backtick must not follow `\` or another backtick, so the content
 // ends with a character that is neither.
 const escapedInlineCodePattern = /`((?:[^`\n]|\\`)*?[^\\`\n])`(?!`)/y;
+
+interface HastNodeLike {
+  type: string;
+  tagName?: string;
+  properties?: Record<string, unknown>;
+  children?: HastNodeLike[];
+  position?: { start?: { line?: number }; end?: { line?: number } };
+}
+
+// 只有能承载可选文本的块级标签需要行号；容器（ul/ol/table）不写，
+// 这样 closest("[data-src-start]") 总是指向最贴近选区的那个块。
+const SOURCE_LINE_BLOCK_TAGS = new Set([
+  "p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "td", "th", "pre",
+]);
+
+function applySourceLineAttributes(node: HastNodeLike): void {
+  if (node.type === "element" && node.tagName && SOURCE_LINE_BLOCK_TAGS.has(node.tagName)) {
+    const startLine = node.position?.start?.line;
+    const endLine = node.position?.end?.line;
+    if (typeof startLine === "number") {
+      node.properties = {
+        ...(node.properties ?? {}),
+        "data-src-start": String(startLine),
+        "data-src-end": String(typeof endLine === "number" ? endLine : startLine),
+      };
+    }
+  }
+  for (const child of node.children ?? []) applySourceLineAttributes(child);
+}
+
+/**
+ * 给 Markdown 预览的块级元素写入源码行号（`data-src-start` / `data-src-end`），
+ * 供预览批注把浏览器选区锚定回源文件。
+ *
+ * 必须挂在 `rehypeSanitize` **之后**：它是白名单模型，会剥掉未声明的 `data-*` 属性。
+ * 注意 `normalizeDisplayMath` 可能改写行数，因此行号只是主锚点，引文仍作为消歧兼重定位手段。
+ */
+export function rehypeSourceLines(): (tree: unknown) => void {
+  return (tree: unknown) => {
+    applySourceLineAttributes(tree as HastNodeLike);
+  };
+}
 
 function rewriteEscapedInlineCodeBackticks(line: string): string {
   return replaceNotPrecededBy(line, "`", "\\`", escapedInlineCodePattern, ([match, content]) => {
@@ -587,4 +629,5 @@ export const markdownPreviewRehypePlugins: ReactMarkdownOptions["rehypePlugins"]
   rehypeRaw,
   [rehypeSanitize, markdownSanitizeSchema],
   [rehypeKatex, { throwOnError: false, strict: false }],
+  rehypeSourceLines,
 ];

@@ -104,6 +104,8 @@ interface Props {
 
 export interface ChatInputHandle {
   insertText: (text: string) => void;
+  /** 直接把一段文本作为用户消息提交（预览批注走这条路径）。 */
+  submitText: (text: string) => void;
   insertIfEmpty: (text: string) => void;
   replaceMessage: (message: UserMessage) => void;
   prependText: (text: string) => void;
@@ -844,6 +846,34 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         ta.style.height = "auto";
         ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
       });
+    },
+    submitText(text: string) {
+      const message = text.trim();
+      if (!message) return;
+      onAudioUnlock?.();
+      // 流式期间不丢内容：优先排队为 followUp（与输入栏一致），
+      // 没有排队通道时退回输入框，至少让用户看得见。
+      if (isStreaming) {
+        if (onFollowUp) {
+          onFollowUp(message);
+          return;
+        }
+        const ta = textareaRef.current;
+        const current = ta ? ta.value : valueRef.current;
+        const next = current ? `${current}\n\n${message}` : message;
+        valueRef.current = next;
+        setValue(next);
+        setAtQuery(null);
+        requestAnimationFrame(() => {
+          if (!ta) return;
+          ta.focus();
+          ta.setSelectionRange(next.length, next.length);
+          ta.style.height = "auto";
+          ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+        });
+        return;
+      }
+      onSend(message);
     },
     insertText(text: string) {
       const ta = textareaRef.current;

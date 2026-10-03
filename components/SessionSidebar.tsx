@@ -2,7 +2,6 @@
 
 import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
 import type { SessionInfo } from "@/lib/types";
-import { loadExplorerOpen, saveExplorerOpen } from "@/lib/file-explorer-state";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import { getProjectActivity, getRecentProjects, sessionsForProject } from "@/lib/project-groups";
@@ -24,11 +23,8 @@ import {
   saveHiddenWorkspaces,
 } from "@/lib/session-folders";
 import { listSessionFamilies } from "@/lib/session-family";
-import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { useScrollbarVisibility } from "@/hooks/useScrollbarVisibility";
 import { DirectoryPicker } from "./DirectoryPicker";
-import { DismissButton } from "./DismissButton";
-import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
 import { SessionSearch } from "./SessionSearch";
 
 // Fixed row height for the session list. SessionItem renders at exactly this
@@ -65,65 +61,6 @@ declare global {
       selectDirectory: () => Promise<string | null>;
     };
   }
-}
-
-function ToolbarIconButton({
-  onClick,
-  title,
-  disabled,
-  skipHover,
-  color,
-  background = "none",
-  marginRight,
-  ariaPressed,
-  children,
-}: {
-  onClick: () => void;
-  title: string;
-  disabled?: boolean;
-  skipHover?: boolean;
-  color: string;
-  background?: string;
-  marginRight?: number;
-  ariaPressed?: boolean;
-  children: ReactNode;
-}) {
-  const enter = (e: React.MouseEvent<HTMLButtonElement>) => {
-    if (disabled || skipHover) return;
-    e.currentTarget.style.color = "var(--text-muted)";
-    e.currentTarget.style.background = "var(--bg-hover)";
-  };
-  const leave = (e: React.MouseEvent<HTMLButtonElement>) => {
-    if (disabled || skipHover) return;
-    e.currentTarget.style.color = color;
-    e.currentTarget.style.background = background;
-  };
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      aria-label={title}
-      aria-pressed={ariaPressed}
-      style={{
-        position: "relative",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        width: 26, height: 26, padding: 0, marginRight,
-        background,
-        border: "none",
-        color,
-        cursor: disabled ? "default" : "pointer",
-        borderRadius: 5,
-        flexShrink: 0,
-        opacity: disabled ? 0.6 : 1,
-        transition: "color 0.3s, background 0.3s",
-      }}
-      onMouseEnter={enter}
-      onMouseLeave={leave}
-    >
-      {children}
-    </button>
-  );
 }
 
 function sessionListUrl(summary: boolean, force: boolean): string {
@@ -196,10 +133,6 @@ const UNREAD_SESSIONS_STORAGE_KEY = "pi-web:unread-session-ids";
 const LAST_CUSTOM_CWD_STORAGE_KEY = "pi-web:last-custom-cwd";
 const RUNNING_SESSIONS_POLL_MS = 2500;
 const SESSION_DETAILS_HYDRATION_DELAY_MS = 750;
-const SESSION_PANE_DEFAULT_HEIGHT = 320;
-const SESSION_PANE_MIN_HEIGHT = 80;
-const EXPLORER_PANE_MIN_HEIGHT = 120;
-const SESSION_PANE_MAX_HEIGHT = 1600;
 
 function loadLastCustomCwd(): string {
   if (typeof window === "undefined") return "";
@@ -440,18 +373,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const [worktreeLoadingCwd, setWorktreeLoadingCwd] = useState<string | null>(null);
   const wtDropdownRef = useRef<HTMLDivElement>(null);
   const wtNewInputRef = useRef<HTMLInputElement>(null);
-  const [explorerOpen, setExplorerOpen] = useState(true);
-  const [explorerKey, setExplorerKey] = useState(0);
-  const [explorerUploadBusy, setExplorerUploadBusy] = useState(false);
-  const [fileSearchOpen, setFileSearchOpen] = useState(false);
   const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
   const [sessionSearchQuery, setSessionSearchQuery] = useState("");
   const sessionSearchActive = sessionSearchOpen && Boolean(sessionSearchQuery.trim());
-  const [changesCount, setChangesCount] = useState(0);
-  const [changesCollapsed, setChangesCollapsed] = useState(true);
-  const [explorerRefreshDone, setExplorerRefreshDone] = useState(false);
-  const [fileManager, setFileManager] = useState<FileManagerAvailability | null>(null);
-  const [fileManagerError, setFileManagerError] = useState<string | null>(null);
   const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(() => new Set());
   const [unreadSessionIds, setUnreadSessionIds] = useState<Set<string>>(() => loadUnreadSessionIds());
   const serverBootIdRef = useRef<string | null>(null);
@@ -462,8 +386,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // running state; late /api/sessions responses must not overwrite it.
   const runningPollAuthoritativeRef = useRef(false);
   const detailsHydrationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const explorerRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const fileExplorerRef = useRef<FileExplorerHandle>(null);
 
   // Codex / Z Code folder tree state
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => loadCollapsedFolders());
@@ -480,42 +402,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
   // Virtualized session list: only the visible window of rows is mounted.
   const listScrollRef = useRef<HTMLDivElement>(null);
-  const explorerScrollRef = useRef<HTMLDivElement>(null);
   useScrollbarVisibility(listScrollRef);
-  useScrollbarVisibility(explorerScrollRef, explorerOpen && Boolean(selectedCwdProp || selectedCwd));
   const sessionPaneRef = useRef<HTMLDivElement>(null);
-  const explorerSectionRef = useRef<HTMLDivElement>(null);
-  const sessionPaneHeightRef = useRef(SESSION_PANE_DEFAULT_HEIGHT);
-  const getDefaultSessionPaneHeight = useCallback(() => {
-    if (!explorerOpen) return SESSION_PANE_DEFAULT_HEIGHT;
-    const paneHeight = sessionPaneRef.current?.getBoundingClientRect().height;
-    const explorerHeight = explorerSectionRef.current?.getBoundingClientRect().height;
-    return paneHeight && explorerHeight
-      ? Math.round((paneHeight + explorerHeight) / 2)
-      : SESSION_PANE_DEFAULT_HEIGHT;
-  }, [explorerOpen]);
-  const getMaxSessionPaneHeight = useCallback(() => {
-    if (!explorerOpen || !(selectedCwdProp || selectedCwd)) return SESSION_PANE_MAX_HEIGHT;
-    const paneHeight = sessionPaneRef.current?.getBoundingClientRect().height ?? SESSION_PANE_DEFAULT_HEIGHT;
-    const explorerHeight = explorerSectionRef.current?.getBoundingClientRect().height ?? EXPLORER_PANE_MIN_HEIGHT;
-    return Math.max(
-      SESSION_PANE_MIN_HEIGHT,
-      paneHeight + explorerHeight - EXPLORER_PANE_MIN_HEIGHT,
-    );
-  }, [explorerOpen, selectedCwd, selectedCwdProp]);
-  const sessionPaneResizer = useResizablePanel({
-    ariaLabel: t("layout.resizeSidebarSections"),
-    axis: "vertical",
-    cssVariable: "--sidebar-session-pane-height",
-    defaultWidth: SESSION_PANE_DEFAULT_HEIGHT,
-    getDefaultWidth: getDefaultSessionPaneHeight,
-    getMaxWidth: getMaxSessionPaneHeight,
-    growthDirection: "down",
-    maxWidth: SESSION_PANE_MAX_HEIGHT,
-    minWidth: SESSION_PANE_MIN_HEIGHT,
-    storageKey: "pi-web:sidebar-session-pane-height",
-    widthRef: sessionPaneHeightRef,
-  });
   const [listViewportH, setListViewportH] = useState(0);
   const [listScrollTop, setListScrollTop] = useState(0);
   const [focusedSessionId, setFocusedSessionId] = useState<string | null>(null);
@@ -621,61 +509,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       }
     };
   }, [loadSessions, refreshKey]);
-
-  // Browser storage is unavailable during server rendering. Restore the panel
-  // preference after hydration so a collapsed explorer stays collapsed on reload.
-  useEffect(() => {
-    setExplorerOpen(loadExplorerOpen());
-  }, []);
-
-  // Only the server can raise a file-manager window, and only when the browser
-  // runs on that same machine. Ask it once so the button can pick the right
-  // label (Explorer / Finder / generic) and disable itself when unavailable.
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/open-in-explorer")
-      .then((res) => res.ok ? res.json() as Promise<FileManagerAvailability> : null)
-      .then((data) => { if (!cancelled && data) setFileManager(data); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
-
-  // A failure belongs to the project it happened on.
-  useEffect(() => {
-    setFileManagerError(null);
-  }, [selectedCwd, selectedCwdProp]);
-
-  const openInFileManager = useCallback(async () => {
-    const dir = selectedCwd ?? selectedCwdProp;
-    if (!dir) return;
-    try {
-      const res = await fetch("/api/open-in-explorer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd: dir }),
-      });
-      if (res.ok) {
-        setFileManagerError(null);
-        return;
-      }
-      const data = await res.json().catch(() => ({})) as { error?: string };
-      setFileManagerError(data.error ?? `HTTP ${res.status}`);
-    } catch (error) {
-      setFileManagerError(error instanceof Error ? error.message : String(error));
-    }
-  }, [selectedCwd, selectedCwdProp]);
-
-  const fileManagerLabel = t(
-    fileManager?.platform === "darwin"
-      ? "sidebar.openInFinder"
-      : fileManager?.platform === "win32"
-        ? "sidebar.openInExplorer"
-        : "sidebar.openInFileManager",
-  );
-  const fileManagerUnavailable = fileManager?.supported === false;
-  const fileManagerErrorMessage = fileManagerError
-    ? t(FILE_MANAGER_ERROR_KEYS[fileManagerError] ?? fileManagerError)
-    : null;
 
   // Persist unread markers so they survive a browser refresh before the user
   // has actually opened the completed session.
@@ -824,10 +657,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       return next;
     });
   }, [selectedSessionId]);
-
-  useEffect(() => {
-    if (explorerRefreshKey !== undefined) setExplorerKey((k) => k + 1);
-  }, [explorerRefreshKey]);
 
   useEffect(() => {
     fetch("/api/home").then((r) => r.json()).then((d: { home?: string }) => {
@@ -1325,13 +1154,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
   return (
     <div
-      ref={sessionPaneResizer.panelRef}
       style={{
         display: "flex",
         flexDirection: "column",
         height: "100%",
         overflow: "hidden",
-        "--sidebar-session-pane-height": `${sessionPaneResizer.width}px`,
       } as CSSProperties}
     >
       {customPathOpen && (
@@ -1862,10 +1689,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         style={{
           display: "flex",
           flexDirection: "column",
-          flex: explorerOpen && (selectedCwdProp || selectedCwd)
-            ? "0 1 var(--sidebar-session-pane-height, 320px)"
-            : "1 1 auto",
-          minHeight: SESSION_PANE_MIN_HEIGHT,
+          flex: "1 1 auto",
           overflow: "hidden",
         }}
       >
@@ -2487,214 +2311,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         </div>
         </SessionSearch>
       </div>
-
-      {explorerOpen && (selectedCwdProp || selectedCwd) && (
-        <div
-          className={`sidebar-section-resize-handle${sessionPaneResizer.isResizing ? " is-resizing" : ""}`}
-          data-resize-handle="sidebar-sections"
-          title={`${t("layout.resizeSidebarSections")}: ${t("layout.resizeHeightHint")}`}
-          style={{
-            position: "relative",
-            zIndex: 20,
-            width: "100%",
-            height: 12,
-            margin: "-6px 0",
-            flex: "0 0 12px",
-            cursor: "row-resize",
-            touchAction: "none",
-          }}
-          {...sessionPaneResizer.separatorProps}
-        />
-      )}
-
-      {/* File Explorer section */}
-      {(selectedCwdProp || selectedCwd) && (
-        <div
-          ref={explorerSectionRef}
-          style={{
-            borderTop: "1px solid var(--border)",
-            display: "flex",
-            flexDirection: "column",
-            flex: explorerOpen ? "1 1 0" : "0 0 auto",
-            minHeight: explorerOpen ? EXPLORER_PANE_MIN_HEIGHT : 0,
-            overflow: "hidden",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
-            <button
-              onClick={() => setExplorerOpen((open) => {
-                const next = !open;
-                saveExplorerOpen(next);
-                return next;
-              })}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                flex: 1,
-                padding: "6px 10px",
-                background: "none",
-                border: "none",
-                color: "var(--text-muted)",
-                cursor: "pointer",
-                fontSize: 11,
-                fontWeight: 600,
-                letterSpacing: "0.05em",
-                textTransform: "uppercase",
-                textAlign: "left",
-              }}
-            >
-              <svg
-                width="9" height="9" viewBox="0 0 10 10" fill="none"
-                stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
-                style={{ transform: explorerOpen ? "rotate(90deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }}
-              >
-                <polyline points="3 2 7 5 3 8" />
-              </svg>
-              {t("files.explorer")}
-            </button>
-            <ToolbarIconButton
-              onClick={() => { void openInFileManager(); }}
-              disabled={fileManagerUnavailable}
-              title={fileManagerUnavailable
-                ? t(fileManager?.reason === "remote" ? "sidebar.openInExplorerRemoteOnly" : "sidebar.openInExplorerUnsupported")
-                : fileManagerLabel}
-              color="var(--text-dim)"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M3 8a2 2 0 0 1 2-2h3.4l1.9 1.9H19a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
-              </svg>
-            </ToolbarIconButton>
-            {onOpenTerminal && (
-              <ToolbarIconButton
-                onClick={() => onOpenTerminal(selectedCwd ?? selectedCwdProp!)}
-                title={t("terminal.open")}
-                color="var(--text-dim)"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" />
-                </svg>
-              </ToolbarIconButton>
-            )}
-            {explorerOpen && changesCount > 0 && (
-              <ToolbarIconButton
-                onClick={() => setChangesCollapsed((v) => !v)}
-                title={t("sidebar.changedFiles", { count: changesCount })}
-                ariaPressed={!changesCollapsed}
-                color={changesCollapsed ? "var(--text-dim)" : "var(--accent)"}
-                background={changesCollapsed ? "none" : "var(--bg-selected)"}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M3 12h6" />
-                  <path d="M15 12h6" />
-                </svg>
-              </ToolbarIconButton>
-            )}
-            {explorerOpen && (
-              <ToolbarIconButton
-                onClick={() => {
-                  setFileSearchOpen((open) => !open);
-                }}
-                title={t("sidebar.searchFiles")}
-                ariaPressed={fileSearchOpen}
-                color={fileSearchOpen ? "var(--accent)" : "var(--text-dim)"}
-                background={fileSearchOpen ? "var(--bg-selected)" : "none"}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />
-                </svg>
-              </ToolbarIconButton>
-            )}
-            {explorerOpen && (
-              <ToolbarIconButton
-                onClick={() => {
-                  const targetCwd = selectedCwd ?? selectedCwdProp;
-                  if (targetCwd) {
-                    fetch("/api/files/reveal", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ path: targetCwd, isDir: true }),
-                    }).catch(console.error);
-                  }
-                }}
-                title="在 Windows 资源管理器中打开项目文件夹"
-                color="var(--text-dim)"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                  <polyline points="14 11 18 15 14 19" />
-                </svg>
-              </ToolbarIconButton>
-            )}
-            {explorerOpen && (
-              <ToolbarIconButton
-                onClick={() => fileExplorerRef.current?.openUploadPicker()}
-                disabled={explorerUploadBusy}
-                title={t("sidebar.uploadFilesTitle")}
-                color="var(--text-dim)"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <path d="m17 8-5-5-5 5" />
-                  <path d="M12 3v12" />
-                </svg>
-              </ToolbarIconButton>
-            )}
-            <ToolbarIconButton
-              onClick={() => {
-                if (onExplorerRefresh) onExplorerRefresh();
-                else setExplorerKey((k) => k + 1);
-                setExplorerRefreshDone(true);
-                if (explorerRefreshTimerRef.current) clearTimeout(explorerRefreshTimerRef.current);
-                explorerRefreshTimerRef.current = setTimeout(() => setExplorerRefreshDone(false), 2000);
-              }}
-              title={t("sidebar.refreshExplorer")}
-              skipHover={explorerRefreshDone}
-              color={explorerRefreshDone ? "#4ade80" : "var(--text-dim)"}
-              background={explorerRefreshDone ? "rgba(74,222,128,0.18)" : "none"}
-              marginRight={6}
-            >
-              {explorerRefreshDone ? (
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              ) : (
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                  <path d="M3 3v5h5" />
-                </svg>
-              )}
-            </ToolbarIconButton>
-          </div>
-          {fileManagerErrorMessage && (
-            <div role="alert" style={{ display: "flex", alignItems: "flex-start", gap: 6, padding: "0 10px 6px", fontSize: 10, lineHeight: 1.35, color: "#f87171" }}>
-              <span style={{ minWidth: 0, flex: 1, overflowWrap: "anywhere" }}>{fileManagerErrorMessage}</span>
-              <DismissButton onClick={() => setFileManagerError(null)} title={t("files.dismissError")} />
-            </div>
-          )}
-          {explorerOpen && (
-            <div ref={explorerScrollRef} className="scrollbar-subtle" style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
-              <FileExplorer
-                ref={fileExplorerRef}
-                cwd={selectedCwd ?? selectedCwdProp!}
-                onOpenFile={onOpenFile ?? (() => {})}
-                refreshKey={explorerKey}
-                onAtMention={onAtMention}
-                onAtMentions={onAtMentions}
-                onUploadBusyChange={setExplorerUploadBusy}
-                changesCollapsed={changesCollapsed}
-                onChangesCountChange={setChangesCount}
-                fileSearchOpen={fileSearchOpen}
-                onFileSearchOpenChange={setFileSearchOpen}
-              />
-            </div>
-          )}
-        </div>
-      )}
-
-
-
     </div>
   );
 }

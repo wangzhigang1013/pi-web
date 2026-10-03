@@ -1840,3 +1840,142 @@ span.token.table {
     padding-bottom: 6px !important;
   }
 }
+
+/* 预览批注（Preview Annotations）：批注浮标、批注卡片与定位高亮。 */
+.preview-annotation-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.4;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.preview-annotation-button:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.preview-annotation-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.preview-annotation-button.is-ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.preview-annotation-button.is-ghost:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.preview-annotation-link {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.preview-annotation-link:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
+/* 定位高亮：用 box-shadow 描边，避免改动被批注块的背景色。 */
+.preview-annotation-flash {
+  animation: preview-annotation-flash 1.4s ease-out;
+  border-radius: 4px;
+}
+
+@keyframes preview-annotation-flash {
+  0% {
+    box-shadow: 0 0 0 3px var(--accent);
+  }
+  100% {
+    box-shadow: 0 0 0 3px transparent;
+  }
+}
+
+/* 正文持久高亮层 (Highlight Layer) */
+.preview-annotation-block[data-annotation-highlight="draft"] {
+  background-color: rgba(245, 158, 11, 0.12) !important;
+  border-left: 3px solid #f59e0b !important;
+  padding-left: 4px;
+  border-radius: 2px;
+  position: relative;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.preview-annotation-block[data-annotation-highlight="draft"]:hover {
+  background-color: rgba(245, 158, 11, 0.22) !important;
+  cursor: pointer;
+}
+
+.preview-annotation-block[data-annotation-highlight="sent"] {
+  background-color: rgba(34, 197, 94, 0.08) !important;
+  border-left: 3px solid #22c55e !important;
+  padding-left: 4px;
+  border-radius: 2px;
+  position: relative;
+}
+
+/* 就地弹出气泡与抽屉动画 */
+.preview-annotation-composer {
+  animation: preview-popover-in 0.14s ease-out;
+}
+
+@keyframes preview-popover-in {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -4px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+.preview-annotation-capsule {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.preview-annotation-capsule:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+}
+
+.preview-annotation-drawer {
+  animation: preview-drawer-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes preview-drawer-in {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .preview-annotation-flash {
+    animation-duration: 0.01s;
+  }
+  .preview-annotation-composer,
+  .preview-annotation-drawer {
+    animation: none;
+  }
+}

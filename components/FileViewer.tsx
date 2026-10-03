@@ -27,6 +27,8 @@ import { FrontmatterCard } from "./FrontmatterCard";
 import { parseUnifiedPatch } from "@/lib/patch";
 import type { GitFileDiffResponse } from "@/lib/git-types";
 import { useI18n } from "@/hooks/useI18n";
+import { PreviewAnnotations } from "./PreviewAnnotations";
+import type { PreviewAnnotation } from "@/lib/annotations";
 import {
   resolveInitialFileDisplayMode,
   type FileViewerDisplayMode as DisplayMode,
@@ -43,6 +45,8 @@ interface Props {
   onMentionLines?: (relativePath: string, startLine: number, endLine: number) => void;
   /** Insert this file's relative path into the chat input (@ mention). */
   onAtMention?: (relativePath: string, isDir: boolean) => void;
+  /** 把攒好的批注 prompt 交给当前会话（AppShell → ChatInput 提交）。 */
+  onSendAnnotations?: (prompt: string) => void;
   gitRefreshKey?: number;
   initialDisplayMode?: DisplayMode;
   /** PDF page to open on first render (`#page=N` from a markdown link). */
@@ -1088,6 +1092,7 @@ export function FileViewer({
   onOpenFile,
   onMentionLines,
   onAtMention,
+  onSendAnnotations,
   gitRefreshKey,
   initialDisplayMode,
   initialState,
@@ -1115,6 +1120,7 @@ export function FileViewer({
       onOpenFile={onOpenFile}
       onMentionLines={onMentionLines}
       onAtMention={onAtMention}
+      onSendAnnotations={onSendAnnotations}
       gitRefreshKey={gitRefreshKey}
       initialDisplayMode={initialDisplayMode}
       initialState={initialState}
@@ -1131,6 +1137,7 @@ function TextFileViewer({
   onOpenFile,
   onMentionLines,
   onAtMention,
+  onSendAnnotations,
   gitRefreshKey,
   initialDisplayMode,
   initialState,
@@ -1441,6 +1448,27 @@ function TextFileViewer({
     )) : null,
     [sourceLines, useLightweightSource, wrapLines],
   );
+
+  // 预览批注只在「源码模式」与「Markdown 预览」下可用：内容被截断时预览不完整，禁用。
+  const annotationsEnabled = data !== null
+    && !data.truncated
+    && (effectiveDisplayMode === "source" || (isMarkdown && effectiveDisplayMode === "preview"));
+  const relativeFilePath = getRelativeFilePath(filePath, cwd);
+
+  const revealAnnotation = useCallback((annotation: PreviewAnnotation) => {
+    const root = contentRef.current;
+    if (!root || !Number.isInteger(annotation.startLine)) return;
+    // 源码模式用 data-line-number，Markdown 预览用 rehype 注入的 data-src-start。
+    const target = root.querySelector<HTMLElement>(
+      `[data-src-start="${annotation.startLine}"], [data-line-number="${annotation.startLine}"]`,
+    );
+    if (!target) return;
+    target.scrollIntoView({ block: "center" });
+    target.classList.remove("preview-annotation-flash");
+    void target.offsetWidth; // 强制 reflow，让同一个元素可以重放高亮动画
+    target.classList.add("preview-annotation-flash");
+    window.setTimeout(() => target.classList.remove("preview-annotation-flash"), 1400);
+  }, []);
 
   useEffect(() => {
     const updateSelectedLineRange = () => {
@@ -1795,6 +1823,18 @@ function TextFileViewer({
           highlightedSource
         )}
       </div>
+
+      <PreviewAnnotations
+        containerRef={contentRef}
+        filePath={filePath}
+        relativePath={relativeFilePath}
+        cwd={cwd}
+        sessionId={sourceSessionId}
+        sourceText={viewerContent}
+        enabled={annotationsEnabled}
+        onSendPrompt={onSendAnnotations}
+        onRevealAnnotation={revealAnnotation}
+      />
     </div>
   );
 }

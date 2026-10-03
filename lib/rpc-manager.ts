@@ -2417,7 +2417,7 @@ export async function startRpcSession(
     const defaultModelId = services.settingsManager.getDefaultModel();
     const branch = sessionManager.getBranch();
     // System messages carry the prompt and tool loadout, not a conversation.
-    const hasExistingMessages = branch.some((entry) => entry.type === "message" && (entry.message.role as string) !== "system");
+    const hasExistingMessages = branch.some((entry) => entry.type === "message" && entry.message.role !== "system");
     const savedModel = hasExistingMessages
       ? getLatestModelChange(branch as unknown as SessionEntry[])
       : null;

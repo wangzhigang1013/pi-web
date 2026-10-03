@@ -606,6 +606,15 @@ pre, code {
   --chat-font-size-offset: calc(var(--chat-content-font-size, 14px) - 14px);
 }
 
+/* 上下文压缩动态指示栏（fork 定制）：与消息列同宽居中。 */
+.compaction-indicator-bar {
+  width: 100%;
+  max-width: var(--chat-content-max-width, 820px);
+  margin: 0 auto;
+  padding: 8px 16px 0;
+  box-sizing: border-box;
+}
+
 .markdown-body {
   min-width: 0;
   max-width: 100%;

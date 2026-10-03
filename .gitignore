@@ -45,3 +45,7 @@ next-env.d.ts
 .factory
 e2e_*.mjs
 tmp/
+
+# Windows artifact: upstream MCP tests resolve temp paths without the POSIX root,
+# leaving "C<colon>Users..." entries with "command-ran" in the repo root.
+*command-ran

@@ -1390,7 +1390,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
         )}
         {/* 上下文压缩专属动态指示栏 */}
         {isCompacting && (
-          <div style={{ maxWidth: "var(--chat-content-max-width, 820px)", width: "100%", margin: "0 auto", padding: "8px 16px 0", boxSizing: "border-box" }}>
+          <div className="compaction-indicator-bar">
             <div
               style={{
                 padding: "10px 14px",

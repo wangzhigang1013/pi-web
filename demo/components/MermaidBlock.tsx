@@ -29,6 +29,37 @@ export function downloadMermaidSvg(svg: SVGSVGElement): void {
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
+/**
+ * Automatically repairs common LLM mistakes in Mermaid diagram definitions,
+ * such as unquoted node labels with parentheses or special punctuation.
+ */
+export function sanitizeMermaidCode(raw: string): string {
+  let text = raw;
+
+  text = text.replace(/(\bsubgraph\s+[\w-]+\s*)\[([^"\n\]]+)\]/g, (m, prefix, label) => {
+    if (label.startsWith('"') && label.endsWith('"')) return m;
+    return `${prefix}["${label.replace(/"/g, "'")}"]`;
+  });
+
+  text = text.replace(/([\w-]+)\[([^\[\("\n\]][^"\n\]]*)\]/g, (m, id, label) => {
+    if (label.startsWith('"') && label.endsWith('"')) return m;
+    if (/[()（）:：<>\/]/.test(label)) {
+      return `${id}["${label.replace(/"/g, "'")}"]`;
+    }
+    return m;
+  });
+
+  text = text.replace(/([\w-]+)\{([^{\"\n\}][^"\n\}]*)\}/g, (m, id, label) => {
+    if (label.startsWith('"') && label.endsWith('"')) return m;
+    if (/[()（）:：<>\/]/.test(label)) {
+      return `${id}{"${label.replace(/"/g, "'")}"}`;
+    }
+    return m;
+  });
+
+  return text;
+}
+
 type RenderState =
   | { key: string; status: "loading" }
   | { key: string; status: "error" }
@@ -59,14 +90,26 @@ export function MermaidBlock({ code, isStreaming, defaultPreview = false }: Merm
         theme: isDark ? "dark" : "default",
       });
 
-      const parsed = await mermaid.parse(code, { suppressErrors: true });
+      let targetCode = code;
+      let parsed = await mermaid.parse(targetCode, { suppressErrors: true });
+      if (!parsed) {
+        const sanitized = sanitizeMermaidCode(code);
+        if (sanitized !== code) {
+          const sanitizedParsed = await mermaid.parse(sanitized, { suppressErrors: true });
+          if (sanitizedParsed) {
+            targetCode = sanitized;
+            parsed = sanitizedParsed;
+          }
+        }
+      }
+
       if (!parsed) throw new Error("Invalid Mermaid diagram");
 
       const id =
         typeof crypto !== "undefined" && "randomUUID" in crypto
           ? `mermaid-${crypto.randomUUID()}`
           : `mermaid-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const result = await mermaid.render(id, code);
+      const result = await mermaid.render(id, targetCode);
       if (!cancelled) {
         setRenderState({ key: currentKey, status: "ready", svg: result.svg });
       }

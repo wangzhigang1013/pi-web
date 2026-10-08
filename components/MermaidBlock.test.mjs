@@ -8,7 +8,7 @@ const jiti = createJiti(import.meta.url, {
 });
 const React = await jiti.import("react");
 const { renderToStaticMarkup } = await jiti.import("react-dom/server");
-const { MermaidBlock, CodeBlock, downloadMermaidSvg } = await jiti.import("./MermaidBlock.tsx");
+const { MermaidBlock, CodeBlock, downloadMermaidSvg, sanitizeMermaidCode } = await jiti.import("./MermaidBlock.tsx");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");
 
 // Simple sequenceDiagram for testing
@@ -134,3 +134,25 @@ test("downloadMermaidSvg downloads XML-serialized SVG and releases its URL", asy
     URL.revokeObjectURL = originalRevokeObjectURL;
   }
 });
+
+test("sanitizeMermaidCode quotes unquoted brackets containing parentheses and special characters", () => {
+  const broken = `flowchart TD
+  subgraph S1 [Phase 1: 数据输入 (Input)]
+    A[用户输入 (Query)] --> B{是否超时? (重试3次)}
+  end`;
+
+  const repaired = sanitizeMermaidCode(broken);
+
+  assert.match(repaired, /subgraph S1 \["Phase 1: 数据输入 \(Input\)"\]/);
+  assert.match(repaired, /A\["用户输入 \(Query\)"\]/);
+  assert.match(repaired, /B\{"是否超时\? \(重试3次\)"\}/);
+});
+
+test("sanitizeMermaidCode does not re-quote already quoted labels", () => {
+  const valid = `flowchart TD
+  A["已带引号 (Valid)"] --> B{"已带引号 (Cond)"}`;
+
+  const output = sanitizeMermaidCode(valid);
+  assert.equal(output, valid);
+});
+

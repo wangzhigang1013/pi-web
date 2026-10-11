@@ -1479,7 +1479,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   </span>
                 </div>
               </div>
-              {newSessionContextBar}
             </div>
           </div>
         )}

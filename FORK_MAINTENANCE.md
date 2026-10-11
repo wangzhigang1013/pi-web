@@ -39,6 +39,7 @@
 | **模型扩展** | **Google Antigravity 多账号池与配额监控**<br>• 多账号配额实时轮询与切换<br>• 智能动态模型适配器 | **P1** | `app/api/antigravity/` | 官方普通 API Key 轮询 | 静态检查：接口文件必须存在 |
 | **渲染排版** | **Mermaid 流程图自愈与多行公式防溢出**<br>• LLM 漏引号特殊字符自动修复<br>• 宽公式平滑排版 | **P2** | `components/MermaidBlock.tsx`<br>`lib/markdown.ts` | 官方直接报错 Red Screen | 静态检查：必须包含 `sanitizeMermaidCode` |
 | **运行感知** | **服务重启无缝平滑刷新**<br>• `serverBootId` 变化自动重载前端 | **P2** | `components/SessionSidebar.tsx` | 官方无感知（需手动 F5） | 静态检查：必须包含 `serverBootId` 轮询 |
+| **页面纯净化** | **移除新会话上方官方条框**<br>• 彻底屏蔽官方多余的 `NewSessionContextBar`<br>• 杜绝对话框上方文件图标误点击报错跳转<br>• 项目/工作区纯粹收敛于左侧专职管理 | **P2** | `components/ChatWindow.tsx`<br>`components/AppShell.tsx` | 官方输入框上方强塞文件图标与抽屉 | 静态检查：严禁在 `ChatWindow` 渲染 `{newSessionContextBar}` |
 
 ---
 

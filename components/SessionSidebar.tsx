@@ -6,6 +6,7 @@ import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import { getProjectActivity, getRecentProjects, sessionsForProject } from "@/lib/project-groups";
 import { workspaceKeyOf } from "@/lib/workspace-memory";
+import { normalizeFilePathSlashes } from "@/lib/file-paths";
 import { formatRelativeTime } from "@/lib/i18n/format";
 import { useI18n } from "@/hooks/useI18n";
 import {
@@ -26,6 +27,11 @@ import { listSessionFamilies } from "@/lib/session-family";
 import { useScrollbarVisibility } from "@/hooks/useScrollbarVisibility";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { SessionSearch } from "./SessionSearch";
+
+function samePathKey(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  return normalizeFilePathSlashes(a).toLowerCase().replace(/\/+$/, "") === normalizeFilePathSlashes(b).toLowerCase().replace(/\/+$/, "");
+}
 
 // Fixed row height for the session list. SessionItem renders at exactly this
 // height, so the list can be windowed (only the visible slice is mounted).
@@ -942,12 +948,16 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       } : prev);
       setSelectedCwd(data.path);
       setWtRefreshKey((k) => k + 1);
+      const tempId = typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+      onNewSession?.(tempId, data.path!);
     } catch (e) {
       setWtError(e instanceof Error ? e.message : String(e));
     } finally {
       setWtBusy(false);
     }
-  }, [wtNewBranch, wtBusy, worktreeState]);
+  }, [wtNewBranch, wtBusy, worktreeState, onNewSession]);
 
   const handleRemoveWorktree = useCallback(async (path: string, force: boolean) => {
     if (!worktreeState || wtBusy) return;
@@ -1056,7 +1066,12 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     worktreeState?.isGit
     && worktreeState.isTopLevel
     && selectedCwd
-    && selectedProject?.key === worktreeState.projectKey
+    && (
+      selectedProject?.key === worktreeState.projectKey
+      || samePathKey(selectedProject?.key, worktreeState.projectKey)
+      || samePathKey(selectedCwd, worktreeState.projectRoot)
+      || worktreeState.worktrees.some((w) => samePathKey(w.path, selectedCwd))
+    )
   );
   const worktreeGuide = selectedCwd
     && worktreeState

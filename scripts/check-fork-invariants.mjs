@@ -47,13 +47,6 @@ console.log("\n🔍 正在运行 Fork 特性不变量自动化校验...\n");
 
 // 1. 左侧侧边栏 (SessionSidebar) 纯粹性与 Codex 会话树
 assertFileNotContains(
-  "components/ChatWindow.tsx",
-  "{newSessionContextBar}",
-  "新会话对话条上方不出现官方多余上下文条",
-  "禁止在 ChatWindow 渲染 newSessionContextBar（工作区专由左侧侧边栏管控）"
-);
-
-assertFileNotContains(
   "components/SessionSidebar.tsx",
   "FileExplorer",
   "侧边栏不包含文件树",

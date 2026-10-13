@@ -279,9 +279,20 @@ export function resolveActiveToolNames(
     requested.filter((name) => codingToolNames.has(name)),
     session.settingsManager.getDefaultTools(),
   );
+  const rawDefaultTools = session.settingsManager.getSettings().defaultTools ?? [];
+  const excludedTools = new Set(
+    rawDefaultTools
+      .filter((name): name is string => typeof name === "string" && name.startsWith("-"))
+      .map((name) => name.slice(1)),
+  );
   const carriedToolNames = carry.filter((name) => {
     const tool = registered.get(name);
-    return tool !== undefined && !codingToolNames.has(name) && tool.exposure !== "hidden";
+    return (
+      tool !== undefined &&
+      !codingToolNames.has(name) &&
+      tool.exposure !== "hidden" &&
+      !excludedTools.has(name)
+    );
   });
 
   return [...new Set([...selectedToolNames, ...carriedToolNames])];

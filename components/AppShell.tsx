@@ -1355,19 +1355,7 @@ export function AppShell() {
   const handleNewSessionBarFocusDone = useCallback(() => {
     newSessionBarFocusRef.current = null;
   }, []);
-  const newSessionContextBar = selectedSession === null && effectiveNewSessionCwd ? (
-    <NewSessionContextBar
-      context={contextForCwd(sidebarNewSessionContext, effectiveNewSessionCwd, newSessionMoveRef.current)}
-      mobile={isMobile}
-      initialFocus={newSessionBarFocusRef.current}
-      onInitialFocusDone={handleNewSessionBarFocusDone}
-      onPick={handlePickNewSessionContext}
-      onUseDefaultDirectory={handleDefaultDirectoryForNewSession}
-      onOpenFolder={handleOpenFolderForNewSession}
-      onRefreshWorktrees={handleRefreshNewSessionWorktrees}
-      onCreateWorktree={handleCreateNewSessionWorktree}
-    />
-  ) : null;
+  const newSessionContextBar = null;
   const showChat = selectedSession !== null || effectiveNewSessionCwd !== null;
   const projectTrustCwd = selectedSession?.cwd ?? effectiveNewSessionCwd;
   // While restoring initial session from URL, don't show the placeholder

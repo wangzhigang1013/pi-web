@@ -845,9 +845,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // response catches up, the server-resolved path handles Windows case and
   // separator differences without teaching the browser OS path semantics.
   const currentWorktree = worktreeState
-    ? worktreeState.worktrees.find((worktree) => worktree.path === selectedCwd)
-      ?? (worktreeState.forCwd === selectedCwd && worktreeState.currentWorktreePath
-        ? worktreeState.worktrees.find((worktree) => worktree.path === worktreeState.currentWorktreePath)
+    ? worktreeState.worktrees.find((worktree) => samePathKey(worktree.path, selectedCwd))
+      ?? (worktreeState.forCwd && samePathKey(worktreeState.forCwd, selectedCwd) && worktreeState.currentWorktreePath
+        ? worktreeState.worktrees.find((worktree) => samePathKey(worktree.path, worktreeState.currentWorktreePath))
         : undefined)
       ?? worktreeState.worktrees.find((worktree) => worktree.isMain)
     : undefined;
@@ -1064,14 +1064,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   );
   const showWorktreeSwitcher = Boolean(
     worktreeState?.isGit
-    && worktreeState.isTopLevel
     && selectedCwd
-    && (
-      selectedProject?.key === worktreeState.projectKey
-      || samePathKey(selectedProject?.key, worktreeState.projectKey)
-      || samePathKey(selectedCwd, worktreeState.projectRoot)
-      || worktreeState.worktrees.some((w) => samePathKey(w.path, selectedCwd))
-    )
+    && worktreeState.worktrees.length > 0
   );
   const worktreeGuide = selectedCwd
     && worktreeState
@@ -1537,6 +1531,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                               setWtDropdownOpen(false);
                               setWtError(null);
                               setWtFilter("");
+                              const tempId = typeof crypto.randomUUID === "function"
+                                ? crypto.randomUUID()
+                                : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+                              onNewSession?.(tempId, wt.path);
                             }}
                             title={wt.path}
                             style={{

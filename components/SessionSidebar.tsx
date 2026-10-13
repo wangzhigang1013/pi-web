@@ -1067,28 +1067,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     && selectedCwd
     && worktreeState.worktrees.length > 0
   );
-  const worktreeGuide = selectedCwd
-    && worktreeState
-    && selectedProject?.key === worktreeState.projectKey
-    && !showWorktreeSwitcher
-    ? (worktreeState.isGit
-        ? {
-             label: t("sidebar.openRepoRoot"),
-             title: t("sidebar.openRepoRootTitle"),
-          }
-        : {
-             label: t("sidebar.gitRepoRootOnly"),
-             title: t("sidebar.gitRepoRootOnlyTitle"),
-          })
-    : null;
-  const worktreeLoading = Boolean(selectedCwd && worktreeLoadingCwd === selectedCwd);
-  const inactiveWorktreeSelector = worktreeGuide
-    ?? (worktreeLoading && !showWorktreeSwitcher
-      ? {
-           label: t("sidebar.worktrees"),
-           title: t("sidebar.checkingWorktrees"),
-        }
-      : null);
 
   const sessionFamilies = useMemo(() => listSessionFamilies(filteredSessions), [filteredSessions]);
 
@@ -1710,42 +1688,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             </div>
           );
         })()}
-        {!sessionSearchOpen && inactiveWorktreeSelector && (
-          <button
-            type="button"
-            aria-disabled="true"
-            tabIndex={-1}
-            title={inactiveWorktreeSelector.title}
-            style={{
-              width: "100%",
-              height: 29,
-              boxSizing: "border-box",
-              marginTop: 6,
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "0 10px",
-              border: "1px solid var(--border)",
-              borderRadius: 7,
-              background: "var(--bg-hover)",
-              color: "var(--text-dim)",
-              fontSize: 11,
-              lineHeight: 1.35,
-              whiteSpace: "nowrap",
-              textAlign: "left",
-              cursor: "default",
-              opacity: 0.82,
-            }}
-          >
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-              <line x1="6" y1="3" x2="6" y2="15" />
-              <circle cx="18" cy="6" r="3" />
-              <circle cx="6" cy="18" r="3" />
-              <path d="M18 9a9 9 0 0 1-9 9" />
-            </svg>
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{inactiveWorktreeSelector.label}</span>
-          </button>
-        )}
       </div>
 
       {/* Session list */}
@@ -1843,6 +1785,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                     }}
                     onClick={() => {
                       toggleFolderCollapse(folderKey);
+                      setSelectedCwd(group.root);
                     }}
                     title={`${displayCwd(group.root, homeDir)} (可按住拖拽排序)`}
                     style={{

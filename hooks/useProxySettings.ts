@@ -93,6 +93,9 @@ export function useProxySettings({ pollMs = 0 }: Options = {}): ProxySettingsCon
     return {
       enabled: storedEnabled,
       url: storedEnabled ? storedUrl : null,
+      // 本地缓存只知道「Pi Web 开关上次是否开着」，来源先按覆盖处理，
+      // 首次 /api/proxy 响应回来后会以服务端的 source 为准。
+      source: storedEnabled ? "web" : "none",
       reachable: storedEnabled,
       host: null,
       port: null,
@@ -154,9 +157,12 @@ export function useProxySettings({ pollMs = 0 }: Options = {}): ProxySettingsCon
       const isFirstMount = isInitialMountRef.current;
       isInitialMountRef.current = false;
 
-      // 优化 3：检测到代理开启但已不可达，且距页面初次加载或手动操作超过 6 秒
+      // 优化 3：检测到 Pi Web 自己的代理覆盖已不可达，且距页面初次加载或手动操作超过 6 秒，
+      // 就撤销覆盖切回直连。source 不是 web 时说明当前走的是系统环境变量里的代理，
+      // 关开关也改不动它，反而会每个轮询周期白撞一次。
       if (
         !isFirstMount &&
+        data.source === "web" &&
         data.enabled &&
         !data.reachable &&
         autoFallbackRef.current &&
@@ -274,8 +280,10 @@ export function useProxySettings({ pollMs = 0 }: Options = {}): ProxySettingsCon
   }, [applyState, draftUrl]);
 
   const toggle = useCallback(async () => {
-    await setEnabled(!(state?.enabled ?? false));
-  }, [setEnabled, state?.enabled]);
+    // 只有 Pi Web 自己的覆盖才谈得上「关掉」；当前是系统代理生效时，
+    // 点一下的语义是「改用输入框里的地址覆盖它」。
+    await setEnabled(state?.source !== "web");
+  }, [setEnabled, state?.source]);
 
   return {
     state,

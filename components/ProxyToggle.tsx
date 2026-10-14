@@ -24,6 +24,10 @@ export function ProxyIconButton({ iconButtonSize = 36 }: { iconButtonSize?: numb
   const enabled = state?.enabled === true;
   const reachable = state?.reachable === true;
   const tone = statusTone(enabled, reachable);
+  // 图标亮着但开关归 Pi Web 管不了时（系统代理），必须在 title 里说清楚，
+  // 否则用户会以为点下去是「关掉代理」。
+  const fromWeb = state?.source === "web";
+  const sourceSuffix = state?.source === "system" ? ` · ${t("settings.proxyFromSystemShort")}` : "";
 
   const statusLabel = loading || state === null
     ? t("settings.proxyChecking")
@@ -36,7 +40,7 @@ export function ProxyIconButton({ iconButtonSize = 36 }: { iconButtonSize?: numb
   const detail = enabled && state?.url ? ` · ${state.url}` : "";
   const errorSuffix = error ? ` · ${t("settings.proxySaveFailed")}: ${error}` : "";
   const autoNotice = autoFallbackTriggered ? ` · ℹ️ ${t("settings.proxyAutoFallbackNotice")}` : "";
-  const title = `${t("settings.proxy")} · ${statusLabel}${detail}${autoNotice}${errorSuffix}`;
+  const title = `${t("settings.proxy")} · ${statusLabel}${sourceSuffix}${detail}${autoNotice}${errorSuffix}`;
   const dotColor = tone === "ok" ? "#22c55e" : tone === "warn" ? "#ef4444" : "var(--text-dim)";
 
   return (
@@ -46,7 +50,7 @@ export function ProxyIconButton({ iconButtonSize = 36 }: { iconButtonSize?: numb
       disabled={loading || saving}
       title={title}
       aria-label={title}
-      aria-pressed={enabled}
+      aria-pressed={fromWeb}
       style={{
         display: "flex",
         alignItems: "center",
@@ -124,6 +128,10 @@ export function ProxySettingsSection() {
   const enabled = state?.enabled === true;
   const reachable = state?.reachable === true;
   const tone = statusTone(enabled, reachable);
+  // 开关只代表「Pi Web 自己的覆盖」；系统环境变量提供的代理不受它控制，
+  // 否则用户点了关闭却仍是代理在线，会以为开关坏了。
+  const fromWeb = state?.source === "web";
+  const fromSystem = state?.source === "system";
 
   const statusLabel = loading || state === null
     ? t("settings.proxyChecking")
@@ -140,7 +148,7 @@ export function ProxySettingsSection() {
       <div className="settings-shell-option">
         <span>{t("settings.proxyEnabled")}</span>
         <ConfigSwitch
-          checked={enabled}
+          checked={fromWeb}
           loading={saving || loading}
           label={t("settings.proxyEnabled")}
           onChange={(next) => void setEnabled(next)}
@@ -185,6 +193,11 @@ export function ProxySettingsSection() {
           {t("settings.proxyRecheck")}
         </ConfigButton>
       </div>
+      {fromSystem && (
+        <p className="settings-proxy-notice" style={{ color: "#3b82f6", fontSize: 12, margin: "6px 0 0" }}>
+          🔗 {t("settings.proxyFromSystem")}
+        </p>
+      )}
       {autoFallbackTriggered && (
         <p role="status" className="settings-proxy-notice" style={{ color: "#3b82f6", fontSize: 12, margin: "6px 0 0" }}>
           ℹ️ {t("settings.proxyAutoFallbackNotice")}

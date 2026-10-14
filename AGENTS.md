@@ -258,7 +258,7 @@ Design decisions and traps live in `docs/agents/`, one note per area. Read every
 - [subagents.md](docs/agents/subagents.md): the built-in subagent setting, profiles and their files, run status, completion notifications, the subagent viewer tab. Files: `lib/subagent*.ts`, `app/api/subagents/**`, `components/AgentsConfig.tsx`, `components/SubagentViewer.tsx`, `components/subagent-viewer-state.ts`.
 - [client-platform.md](docs/agents/client-platform.md): mobile software keyboard and viewport height, the terminal's extra keys, completion sound. Files: `hooks/useViewportHeight.ts`, `hooks/useAudio.ts`, `components/TerminalExtraKeys.tsx`, `lib/terminal-extra-keys.ts`, the keyboard-open CSS.
 
-Fork-only features (not in upstream) are listed in [FORK_MAINTENANCE.md](FORK_MAINTENANCE.md): the HTTP proxy toggle, Markdown preview annotations, the right-panel file explorer, cloud sync of `~/.pi`, company/antigravity model panels and usage statistics. The HTTP proxy toggle's rationale is in `docs/adr/0006-http-proxy-toggle.md` and preview annotations in `docs/adr/0007-preview-annotations.md`.
+Fork-only features (not in upstream) are listed in [FORK_MAINTENANCE.md](FORK_MAINTENANCE.md): the HTTP proxy toggle, Markdown preview annotations, the right-panel file explorer, cloud sync of `~/.pi`, company/antigravity model panels and usage statistics. The HTTP proxy toggle's rationale is in `docs/adr/0006-http-proxy-toggle.md`, its later revision (closing the switch falls back to the inherited system proxy instead of wiping it) in `docs/adr/0008-proxy-toggle-falls-back-to-system-proxy.md`, and preview annotations in `docs/adr/0007-preview-annotations.md`.
 
 ---
 

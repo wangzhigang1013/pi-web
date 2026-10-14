@@ -49,12 +49,20 @@ export interface ToolSettingsResponse {
   codemodeInlineBudget: CodemodeInlineBudgetSetting;
 }
 
+/** 当前生效的代理来源：Pi Web 开关、进程继承的系统环境变量，或没有代理。 */
+export type ProxySource = "web" | "system" | "none";
+
 /** `/api/proxy` 返回的代理开关状态。 */
 export interface ProxySettingsResponse {
   /** 当前进程是否正在使用代理。 */
   enabled: boolean;
   /** 当前生效的代理地址，未启用时为 null。 */
   url: string | null;
+  /**
+   * 代理是谁提供的。`system` 表示 Pi Web 开关并未开启，当前生效的是进程启动时
+   * 继承的环境变量代理；此时关掉开关不会变成直连。
+   */
+  source: ProxySource;
   /** 代理端口是否可建立 TCP 连接（代理软件是否在运行）。 */
   reachable: boolean;
   /** 探测目标主机，未启用代理时为 null。 */

@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
  */
 async function describeState(): Promise<ProxySettingsResponse> {
   applyPersistedProxySettings();
-  const { enabled, url } = getHttpProxyState();
+  const { enabled, url, source } = getHttpProxyState();
   const endpoint = url === null ? null : parseProxyEndpoint(url);
   const reachable = endpoint === null
     ? false
@@ -21,6 +21,7 @@ async function describeState(): Promise<ProxySettingsResponse> {
   return {
     enabled,
     url,
+    source,
     reachable,
     host: endpoint?.host ?? null,
     port: endpoint?.port ?? null,

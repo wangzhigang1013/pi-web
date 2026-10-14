@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as undici from "undici";
+import type { ProxySource } from "./api-types";
 import { readWebProxyConfig, writeWebProxyConfig } from "./proxy-settings";
 import { readRegularFileText } from "./regular-file";
 
@@ -14,18 +15,34 @@ export const DEFAULT_HTTP_IDLE_TIMEOUT_MS = 300_000;
  */
 const LOCAL_NO_PROXY_ENTRIES = ["localhost", "127.0.0.1", "::1"];
 
+/**
+ * Pi Web 的开关只覆盖这三个变量，而不是取代它们。
+ *
+ * 进程启动时继承的这份值称为「系统代理基线」：用户在系统里配好的 Clash 端口
+ * 就藏在里面，关闭开关时必须还原它，否则会把系统代理一起抹掉。
+ */
+const PROXY_ENV_KEYS = ["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"] as const;
+type ProxyEnvKey = (typeof PROXY_ENV_KEYS)[number];
+type ProxyEnvBaseline = Partial<Record<ProxyEnvKey, string>>;
+
 /** 代理开关的当前状态。 */
 export interface HttpProxyState {
   /** 当前进程是否正在使用代理。 */
   enabled: boolean;
   /** 当前生效的代理地址，未启用时为 null。 */
   url: string | null;
+  /** 代理是谁提供的：Pi Web 开关、进程继承的系统环境变量，或没有代理。 */
+  source: ProxySource;
 }
 
 type DispatcherGlobal = typeof globalThis & {
   __piWebHttpDispatcherConfigured?: boolean;
   __piWebHttpIdleTimeoutMs?: number;
   __piWebProxyPersistedApplied?: boolean;
+  /** 进程启动时继承的系统代理基线，只捕获一次，避免被 Pi Web 自己的写入污染。 */
+  __piWebSystemProxyBaseline?: ProxyEnvBaseline;
+  /** Pi Web 当前覆盖的代理地址；null 表示没有覆盖、一切听系统的。 */
+  __piWebProxyOverrideUrl?: string | null;
 };
 
 const dispatcherGlobal = globalThis as DispatcherGlobal;
@@ -193,9 +210,64 @@ export function mergeLocalNoProxy(value: string | undefined): string {
   return entries.join(",");
 }
 
+/**
+ * 捕获进程启动时继承的代理环境变量。
+ *
+ * 只在首次调用时读取并缓存到 globalThis：Pi Web 自己会改写这三个变量，
+ * 稍后再读就拿不到用户真正配置的端口了。
+ */
+function systemProxyBaseline(): ProxyEnvBaseline {
+  const cached = dispatcherGlobal.__piWebSystemProxyBaseline;
+  if (cached !== undefined) return cached;
+
+  const baseline: ProxyEnvBaseline = {};
+  for (const key of PROXY_ENV_KEYS) {
+    const value = process.env[key];
+    if (typeof value === "string" && value.trim().length > 0) baseline[key] = value.trim();
+  }
+  dispatcherGlobal.__piWebSystemProxyBaseline = baseline;
+  return baseline;
+}
+
+// 模块加载时立刻固化基线：setHttpProxy() 会改写这三个变量，惰性到关闭开关时
+// 才读，拿到的就是 Pi Web 自己写进去的覆盖值，反而会被当成“系统代理”恢复。
+systemProxyBaseline();
+
+/**
+ * 把代理环境变量还原到系统基线。
+ *
+ * 基线里若还留着代理，`NO_PROXY` 必须继续带上本地地址：undici 的
+ * `EnvHttpProxyAgent` 在 `no_proxy` 为空时会把**所有**请求送进代理，连 127.0.0.1
+ * 上的本机服务与工具服务也会被当成外网流量（ADR 0006 第 3 条）。
+ */
+function restoreSystemProxyBaseline(): void {
+  const baseline = systemProxyBaseline();
+  const proxyFromBaseline = baseline.HTTP_PROXY !== undefined || baseline.HTTPS_PROXY !== undefined;
+
+  for (const key of PROXY_ENV_KEYS) {
+    if (key === "NO_PROXY") continue;
+    const value = baseline[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+
+  if (proxyFromBaseline) {
+    process.env.NO_PROXY = mergeLocalNoProxy(baseline.NO_PROXY);
+  } else if (baseline.NO_PROXY === undefined) {
+    delete process.env.NO_PROXY;
+  } else {
+    process.env.NO_PROXY = baseline.NO_PROXY;
+  }
+}
+
 export function getHttpProxyState(): HttpProxyState {
-  const url = (process.env.HTTPS_PROXY ?? process.env.HTTP_PROXY ?? "").trim();
-  return url.length > 0 ? { enabled: true, url } : { enabled: false, url: null };
+  const override = (dispatcherGlobal.__piWebProxyOverrideUrl ?? "").trim();
+  if (override.length > 0) return { enabled: true, url: override, source: "web" };
+
+  // 开关关闭时进程仍可能走在系统代理上，这里必须如实反映，否则 UI 会假装已直连。
+  const inherited = (process.env.HTTPS_PROXY ?? process.env.HTTP_PROXY ?? "").trim();
+  if (inherited.length > 0) return { enabled: true, url: inherited, source: "system" };
+  return { enabled: false, url: null, source: "none" };
 }
 
 /**
@@ -204,7 +276,11 @@ export function getHttpProxyState(): HttpProxyState {
  * 状态持久化到 ~/.pi/agent/web-proxy.json，保证 Pi Web 重启后恢复上次状态。
  * 不写入 Pi 命令行的 settings.json，命令行 pi 仍由用户自己控制。
  *
- * @param proxy 代理地址；传 null 或空字符串表示关闭代理
+ * 传 null 或空字符串表示撤销 Pi Web 的覆盖：此时回退到进程启动时继承的系统代理
+ * 环境变量，而不是把代理整个关掉。用户系统里本来就配着 Clash 时，`delete` 掉
+ * 这三个变量会让 Antigravity 这类需要外网的 provider 静默报 `fetch failed`。
+ *
+ * @param proxy 代理地址；传 null 或空字符串表示撤销 Pi Web 的覆盖
  * @param persist 是否落盘到 web-proxy.json，默认为 true
  * @returns 切换后的状态
  */
@@ -212,14 +288,14 @@ export function setHttpProxy(proxy: string | null, persist = true): HttpProxySta
   const trimmed = proxy?.trim() ?? "";
 
   if (trimmed.length === 0) {
-    delete process.env.HTTP_PROXY;
-    delete process.env.HTTPS_PROXY;
-    delete process.env.NO_PROXY;
+    dispatcherGlobal.__piWebProxyOverrideUrl = null;
+    restoreSystemProxyBaseline();
     if (persist) {
       const existing = readWebProxyConfig();
       writeWebProxyConfig({ enabled: false, url: existing?.url ?? null });
     }
   } else {
+    dispatcherGlobal.__piWebProxyOverrideUrl = trimmed;
     process.env.HTTP_PROXY = trimmed;
     process.env.HTTPS_PROXY = trimmed;
     process.env.NO_PROXY = mergeLocalNoProxy(process.env.NO_PROXY);

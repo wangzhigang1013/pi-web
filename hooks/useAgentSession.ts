@@ -140,7 +140,6 @@ export type AgentPhase =
   | { kind: "waiting_model" }
   | { kind: "running_command" }
   | { kind: "running_tools"; tools: { id: string; name: string; progress?: string }[] }
-  | { kind: "compacting"; isAuto?: boolean; startedAt?: number }
   | null;
 
 export interface CompactResultInfo {
@@ -1690,27 +1689,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         setIsCompacting(true);
         setCompactError(null);
         setCompactResult(null);
-        setAgentPhase({
-          kind: "compacting",
-          isAuto: event.type === "auto_compaction_start",
-          startedAt: Date.now(),
-        });
         break;
       case "auto_compaction_end":
       case "compaction_end":
         setIsCompacting(false);
-        setAgentPhase({ kind: "waiting_model" });
         if (event.errorMessage) {
           setCompactError(event.errorMessage as string);
           setCompactResult(null);
         } else if (!event.aborted) {
           setCompactResult(readCompactResult(event.result, (event.reason as string | undefined) ?? "auto"));
-          if (sessionIdRef.current) {
-            void loadSession(sessionIdRef.current).then(() => {
-              isNearBottomRef.current = true;
-              scrollToBottom("auto");
-            });
-          }
+          if (sessionIdRef.current) loadSession(sessionIdRef.current);
         }
         break;
       case "extension_ui_request":
@@ -2022,16 +2010,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     try {
       const result = await sendAgentCommand<CompactCommandResult>(sid, { type: "compact" });
       setCompactResult(readCompactResult(result, "manual"));
-      await loadSession(sid, false);
-      isNearBottomRef.current = true;
-      scrollToBottom("instant");
+      await loadSession(sid, true);
     } catch (e) {
       setCompactError(e instanceof Error ? e.message : String(e));
       setCompactResult(null);
     } finally {
       setIsCompacting(false);
     }
-  }, [isCompacting, loadSession, scrollToBottom]);
+  }, [isCompacting, loadSession]);
 
   // The banner otherwise stays until the next compaction, e.g. "Nothing to compact".
   const dismissCompactError = useCallback(() => setCompactError(null), []);
@@ -2178,9 +2164,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             ...(args ? { customInstructions: args } : {}),
           });
           setCompactResult(readCompactResult(result, "manual"));
-          if (await loadSession(sid, false)) promoteNewSession();
-          isNearBottomRef.current = true;
-          scrollToBottom("instant");
+          if (await loadSession(sid, true)) promoteNewSession();
           return complete({ handled: true, message: "Compacted context" });
         }
 
@@ -2770,11 +2754,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   useEffect(() => {
     if (!compactResult) return;
-    isNearBottomRef.current = true;
-    scrollToBottom("auto");
     const t = setTimeout(() => setCompactResult(null), 6000);
     return () => clearTimeout(t);
-  }, [compactResult, scrollToBottom]);
+  }, [compactResult]);
 
   // Pause notice expiry while hovered or focused.
   // The remainingMs/startedAt/oldestId refs implement a true pause-and-resume instead of resetting the 5s timer.

@@ -11,16 +11,25 @@ import { createJiti } from "jiti";
 // never matched), and it needs a process of its own: SessionSidebar.test.mjs
 // has already loaded the sidebar with the real hook, and jiti shares Node's
 // module cache.
+const hookPath = fileURLToPath(new URL("../hooks/useFilesPlacement", import.meta.url));
+const fixturePath = fileURLToPath(new URL("./__fixtures__/files-placement-tab.mjs", import.meta.url));
+const hookPathSlash = hookPath.replace(/\\/g, "/");
+const fixturePathSlash = fixturePath.replace(/\\/g, "/");
+
 const jiti = createJiti(import.meta.url, {
   jsx: { runtime: "automatic" },
   tsconfigPaths: true,
   alias: {
-    [fileURLToPath(new URL("../hooks/useFilesPlacement", import.meta.url))]: fileURLToPath(new URL("./__fixtures__/files-placement-tab.mjs", import.meta.url)),
+    [hookPath]: fixturePath,
+    [hookPathSlash]: fixturePathSlash,
+    [`${hookPath}.ts`]: fixturePath,
+    [`${hookPathSlash}.ts`]: fixturePathSlash,
+    "@/hooks/useFilesPlacement": fixturePathSlash,
   },
 });
 const React = await jiti.import("react");
 const { renderToStaticMarkup } = await jiti.import("react-dom/server");
-const { I18nProvider } = await jiti.import("@/hooks/useI18n.tsx");
+const { I18nProvider } = await jiti.import("@/hooks/useI18n");
 const { SessionSidebar } = await jiti.import("./SessionSidebar.tsx");
 
 const h = React.createElement;

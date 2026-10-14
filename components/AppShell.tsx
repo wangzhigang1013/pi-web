@@ -8,7 +8,6 @@ import { ChatWindow } from "./ChatWindow";
 import { NewSessionContextBar, type NewSessionContextControl } from "./NewSessionContextBar";
 import type { ChatScrollPosition } from "@/lib/chat-scroll-position";
 import { FileViewer } from "./FileViewer";
-import { RightPanelExplorer } from "./RightPanelExplorer";
 import { TerminalPanel } from "./TerminalPanel";
 import { newTerminalTab, restoreTerminalTabs, TERMINAL_TABS_KEY, type TerminalTab } from "./terminal-tab-state";
 import { CloudSyncButton } from "./CloudSyncButton";
@@ -238,20 +237,6 @@ export function AppShell() {
   const desktopSidebarOpenRef = useRef(!initialNavigation.sidebarCollapsed);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const [rightPanelExpanded, setRightPanelExpanded] = useState(false);
-  const [rightPanelExplorerOpen, setRightPanelExplorerOpen] = useState(true);
-  useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem("pi-right-panel-explorer-open");
-      if (stored !== null) setRightPanelExplorerOpen(stored === "true");
-    } catch {}
-  }, []);
-  const handleToggleRightPanelExplorer = useCallback(() => {
-    setRightPanelExplorerOpen((prev) => {
-      const next = !prev;
-      try { window.localStorage.setItem("pi-right-panel-explorer-open", String(next)); } catch {}
-      return next;
-    });
-  }, []);
   const rightPanelFullWidth = rightPanelOpen && rightPanelExpanded && !isMobile;
   useEffect(() => {
     if (!rightPanelOpen || isMobile) setRightPanelExpanded(false);
@@ -1459,6 +1444,7 @@ export function AppShell() {
         selectedCwd={selectedSession?.cwd ?? newSessionCwd ?? null}
         onCwdChange={handleCwdChange}
         onOpenFile={handleOpenFile}
+        onOpenTerminal={handleOpenTerminal}
         explorerRefreshKey={explorerRefreshKey}
         onExplorerRefresh={handleExplorerRefresh}
         onAtMention={handleAtMention}
@@ -2705,57 +2691,14 @@ export function AppShell() {
           background: "var(--bg-panel)",
           borderBottom: "1px solid var(--border)",
         }}>
-          {activeFileTab?.filePath ? (
-            <>
-              {!isMobile && (
-                <button
-                  type="button"
-                  onClick={handleToggleRightPanelExplorer}
-                  title={translate(rightPanelExplorerOpen ? "files.hideExplorer" : "files.showExplorer")}
-                  aria-label={translate(rightPanelExplorerOpen ? "files.hideExplorer" : "files.showExplorer")}
-                  aria-pressed={rightPanelExplorerOpen}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: 36,
-                    height: 36,
-                    padding: 0,
-                    background: rightPanelExplorerOpen ? "var(--bg-selected)" : "transparent",
-                    border: "none",
-                    borderRight: "1px solid var(--border)",
-                    color: rightPanelExplorerOpen ? "var(--accent)" : "var(--text-muted)",
-                    cursor: "pointer",
-                    flexShrink: 0,
-                    transition: "color 0.12s, background 0.12s",
-                  }}
-                  onMouseEnter={(e) => { if (!rightPanelExplorerOpen) e.currentTarget.style.color = "var(--text)"; }}
-                  onMouseLeave={(e) => { if (!rightPanelExplorerOpen) e.currentTarget.style.color = "var(--text-muted)"; }}
-                >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                  </svg>
-                </button>
-              )}
-              <div style={{ flex: 1, overflow: "hidden" }}>
-                <TabBar
-                  tabs={panelTabs}
-                  activeTabId={activeFileTabId ?? ""}
-                  onSelectTab={setActiveFileTabId}
-                  onCloseTab={handleCloseFileTab}
-                />
-              </div>
-            </>
-          ) : (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 10px", flex: 1, overflow: "hidden" }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--accent)", flexShrink: 0 }} aria-hidden="true">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-              </svg>
-              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {activeCwd ? getFileName(activeCwd) || activeCwd : translate("files.explorer")}
-              </span>
-            </div>
-          )}
+          <div style={{ flex: 1, overflow: "hidden" }}>
+            <TabBar
+              tabs={panelTabs}
+              activeTabId={activeFileTabId ?? ""}
+              onSelectTab={setActiveFileTabId}
+              onCloseTab={handleCloseFileTab}
+            />
+          </div>
           <button
             type="button"
             className="file-panel-expand-button"
@@ -2793,75 +2736,38 @@ export function AppShell() {
           </button>
         </div>
 
-        {/* Content area: FileViewer and/or RightPanelExplorer */}
-        <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "row", paddingBottom: "env(safe-area-inset-bottom)" }}>
+        {/* Only the active viewer is mounted. Lightweight per-tab state is restored on activation. */}
+        <div style={{ flex: 1, minHeight: 0, overflow: "hidden", paddingBottom: "env(safe-area-inset-bottom)" }}>
           {activeFileTab?.filePath ? (
-            <>
-              {rightPanelExplorerOpen && !isMobile && activeCwd && (
-                <div
-                  style={{
-                    width: 240,
-                    flexShrink: 0,
-                    borderRight: "1px solid var(--border)",
-                    height: "100%",
-                    overflow: "hidden",
-                  }}
-                >
-                  <RightPanelExplorer
-                    cwd={activeCwd}
-                    onOpenFile={handleOpenFile}
-                    onAtMention={handleAtMention}
-                    onAtMentions={handleAtMentions}
-                    refreshKey={explorerRefreshKey}
-                    subpanel
-                    onCloseSubpanel={() => setRightPanelExplorerOpen(false)}
-                    onOpenTerminal={handleOpenTerminal}
-                  />
-                </div>
+            <FileViewer
+              key={`${fileWorkspaceGeneration}:${activeFileTab.id}:${activeFileTab.viewerRevision ?? 0}`}
+              filePath={activeFileTab.filePath}
+              cwd={activeCwd ?? undefined}
+              sourceSessionId={activeFileTab.sourceSessionId}
+              gitRefreshKey={explorerRefreshKey}
+              initialDisplayMode={activeFileTab.initialDisplayMode}
+              initialPage={activeFileTab.page}
+              initialState={activeFileTab.viewerState}
+              watchEnabled={rightPanelOpen}
+              onStateChange={(viewerState) => handleFileViewerStateChange(
+                fileWorkspaceGeneration,
+                activeFileTab.id,
+                activeFileTab.viewerRevision ?? 0,
+                viewerState,
               )}
-              <div style={{ flex: 1, minWidth: 0, height: "100%", overflow: "hidden", display: "flex", flexDirection: "column" }}>
-                <FileViewer
-                  key={`${fileWorkspaceGeneration}:${activeFileTab.id}:${activeFileTab.viewerRevision ?? 0}`}
-                  filePath={activeFileTab.filePath}
-                  cwd={activeCwd ?? undefined}
-                  sourceSessionId={activeFileTab.sourceSessionId}
-                  gitRefreshKey={explorerRefreshKey}
-                  initialDisplayMode={activeFileTab.initialDisplayMode}
-                  initialPage={activeFileTab.page}
-                  initialState={activeFileTab.viewerState}
-                  watchEnabled={rightPanelOpen}
-                  onStateChange={(viewerState) => handleFileViewerStateChange(
-                    fileWorkspaceGeneration,
-                    activeFileTab.id,
-                    activeFileTab.viewerRevision ?? 0,
-                    viewerState,
-                  )}
-                  onMentionLines={rightPanelOpen ? handleFileLineMention : undefined}
-                  onAtMention={handleAtMention}
-                  onSendAnnotations={handleSendAnnotations}
-                  onOpenFile={(filePath, page) => handleOpenFile(
-                    filePath,
-                    getFileName(filePath),
-                    { sourceSessionId: activeFileTab.sourceSessionId, page },
-                  )}
-                />
-              </div>
-            </>
+              onMentionLines={rightPanelOpen ? handleFileLineMention : undefined}
+              onAtMention={handleAtMention}
+              onSendAnnotations={handleSendAnnotations}
+              onOpenFile={(filePath, page) => handleOpenFile(
+                filePath,
+                getFileName(filePath),
+                { sourceSessionId: activeFileTab.sourceSessionId, page },
+              )}
+            />
           ) : !terminalTabs.some((tab) => tab.id === activeFileTabId) && !activeAgentTab ? (
-            activeCwd ? (
-              <RightPanelExplorer
-                cwd={activeCwd}
-                onOpenFile={handleOpenFile}
-                onAtMention={handleAtMention}
-                onAtMentions={handleAtMentions}
-                refreshKey={explorerRefreshKey}
-                onOpenTerminal={handleOpenTerminal}
-              />
-            ) : (
-              <div style={{ height: "100%", width: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12 }}>
-                 {translate("files.noneOpen")}
-              </div>
-            )
+            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12 }}>
+               {translate("files.noneOpen")}
+            </div>
           ) : null}
           {terminalTabs.map((tab) => (
             <div key={tab.id} hidden={tab.id !== activeFileTabId} style={{ width: "100%", height: "100%" }}>

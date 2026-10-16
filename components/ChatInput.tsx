@@ -77,7 +77,6 @@ interface Props {
   toolPreset?: ToolPreset;
   onToolPresetChange?: (preset: ToolPreset) => void;
   onTogglePlanMode?: (enable?: boolean) => void;
-  onToggleEditMode?: (enable?: boolean) => void;
   thinkingLevel?: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   /** New session has not committed a thinking level; the button still shows the resolved default. */
   isAutoThinkingSelection?: boolean;
@@ -659,7 +658,7 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
   defaultModel, onSetDefaultModel,
   onCompact, onAbortCompaction, isCompacting, compactError, onDismissCompactError, compactResult, toolPreset, onToolPresetChange,
-  onTogglePlanMode, onToggleEditMode,
+  onTogglePlanMode,
   thinkingLevel, isAutoThinkingSelection = false, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
   savedDefaultThinkingLevel, onSetDefaultThinkingLevel,
   retryInfo, queuedMessages, inputHistory = [], onRecallQueue,
@@ -680,26 +679,15 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
   const enterSendMode = useEnterSendMode();
   const [value, setValue] = useState(() => (draftKey ? getDraft(draftKey)?.value ?? "" : ""));
   // Instant local mode state + sync from extensionStatuses
-  const [activeMode, setActiveMode] = useState<"plan" | "edit" | "off">(() => {
+  const [isPlanActive, setIsPlanActive] = useState<boolean>(() => {
     const discussStatus = extensionStatuses?.find((s) => s.key === "discuss-plan")?.text || "";
-    if (discussStatus.includes("方案")) return "plan";
-    if (discussStatus.includes("修改模式") || discussStatus.includes("只改不跑")) return "edit";
-    return "off";
+    return discussStatus.includes("方案");
   });
 
   useEffect(() => {
     const discussStatus = extensionStatuses?.find((s) => s.key === "discuss-plan")?.text || "";
-    if (discussStatus.includes("方案")) {
-      setActiveMode("plan");
-    } else if (discussStatus.includes("修改模式") || discussStatus.includes("只改不跑")) {
-      setActiveMode("edit");
-    } else {
-      setActiveMode("off");
-    }
+    setIsPlanActive(discussStatus.includes("方案"));
   }, [extensionStatuses]);
-
-  const isPlanActive = activeMode === "plan";
-  const isEditActive = activeMode === "edit";
   const [toolDropdownOpen, setToolDropdownOpen] = useState(false);
   const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false);
   const [controlsMenuOpen, setControlsMenuOpen] = useState(false);
@@ -2331,32 +2319,6 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
               Plan Mode · 只读探索与规划
             </div>
           )}
-          {!compact && isEditActive && (
-            <div
-              style={{
-                position: "absolute",
-                top: -10,
-                right: 16,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 5,
-                padding: "2px 8px",
-                borderRadius: 9,
-                background: "var(--bg)",
-                border: "1px solid rgba(245, 158, 11, 0.45)",
-                color: "rgb(217, 119, 6)",
-                fontSize: 10.5,
-                fontWeight: 600,
-                boxShadow: "0 2px 8px rgba(245, 158, 11, 0.12)",
-                pointerEvents: "none",
-                zIndex: 10,
-                letterSpacing: "-0.01em",
-              }}
-            >
-              <span style={{ width: 5, height: 5, borderRadius: "50%", background: "rgb(217, 119, 6)" }} />
-              Edit Mode · 仅修改不执行
-            </div>
-          )}
           <div
             style={{
               minWidth: 0,
@@ -2366,13 +2328,9 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
               alignItems: compact ? "stretch" : "center",
               background: compact ? "var(--bg)" : isPlanActive
                 ? "color-mix(in srgb, rgba(56, 189, 248, 0.03) 100%, var(--bg))"
-                : isEditActive
-                ? "color-mix(in srgb, rgba(245, 158, 11, 0.03) 100%, var(--bg))"
                 : "var(--bg)",
               border: compact ? "none" : isPlanActive
                 ? "1px solid rgba(56, 189, 248, 0.55)"
-                : isEditActive
-                ? "1px solid rgba(245, 158, 11, 0.55)"
                 : `1px solid ${bashMode ? "var(--tool-bg)" : isStreaming && (onSteer || onFollowUp)
                   ? "rgba(234,179,8,0.4)"
                   : "color-mix(in srgb, var(--border) 70%, transparent)"}`,
@@ -2380,8 +2338,6 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
               padding: compact ? 0 : isMobile ? "6px 6px 6px 12px" : "10px 10px 10px 14px",
               boxShadow: compact ? "none" : isPlanActive
                 ? "0 0 0 1px rgba(56, 189, 248, 0.15), 0 0 20px -3px rgba(56, 189, 248, 0.22), 0 8px 24px -12px rgba(15,23,42,0.10)"
-                : isEditActive
-                ? "0 0 0 1px rgba(245, 158, 11, 0.15), 0 0 20px -3px rgba(245, 158, 11, 0.22), 0 8px 24px -12px rgba(15,23,42,0.10)"
                 : "0 1px 2px rgba(15,23,42,0.04), 0 8px 24px -12px rgba(15,23,42,0.10)",
               transition: "border-color 0.15s, background 0.15s, box-shadow 0.15s",
             } as React.CSSProperties}
@@ -2589,8 +2545,8 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
               <button
                 type="button"
                 onClick={() => {
-                  const nextPlan = activeMode !== "plan";
-                  setActiveMode(nextPlan ? "plan" : "off");
+                  const nextPlan = !isPlanActive;
+                  setIsPlanActive(nextPlan);
                   onTogglePlanMode?.(nextPlan);
                 }}
                 title={
@@ -2633,55 +2589,6 @@ export const ChatInput = memo(forwardRef<ChatInputHandle, Props>(function ChatIn
                   <path d="M9 14l2 2 4-4" />
                 </svg>
                 <span>Plan</span>
-              </button>
-
-              {/* Edit Mode Toggle */}
-              <button
-                type="button"
-                onClick={() => {
-                  const nextEdit = activeMode !== "edit";
-                  setActiveMode(nextEdit ? "edit" : "off");
-                  onToggleEditMode?.(nextEdit);
-                }}
-                title={
-                  isEditActive
-                    ? "修改模式（已开启）：点击退出"
-                    : "开启修改模式 (/edit)：可读写文件但完全拦截命令执行（只改不跑）"
-                }
-                aria-label="修改模式"
-                aria-pressed={isEditActive}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 5,
-                  padding: isMobile ? "0 7px" : "0 10px",
-                  height: 32,
-                  borderRadius: 9,
-                  border: isEditActive ? "1px solid #f59e0b" : "1px solid transparent",
-                  background: isEditActive ? "color-mix(in srgb, #f59e0b 18%, var(--bg-hover))" : "none",
-                  color: isEditActive ? "#f59e0b" : "var(--text-muted)",
-                  cursor: "pointer",
-                  fontSize: 12,
-                  fontWeight: isEditActive ? 600 : 500,
-                  transition: "all 0.12s ease",
-                  flexShrink: 0,
-                }}
-                onMouseEnter={(e) => {
-                  if (isEditActive) return;
-                  e.currentTarget.style.background = "var(--bg-hover)";
-                  e.currentTarget.style.color = "var(--text)";
-                }}
-                onMouseLeave={(e) => {
-                  if (isEditActive) return;
-                  e.currentTarget.style.background = "none";
-                  e.currentTarget.style.color = "var(--text-muted)";
-                }}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M12 20h9" />
-                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-                </svg>
-                <span>Edit</span>
               </button>
             </div>
           </div>

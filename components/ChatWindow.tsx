@@ -300,7 +300,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     dismissCompactError,
     handleRecallQueue,
     handleBuiltinSlashCommand,
-    handleToolPresetChange, handleTogglePlanMode, handleToggleEditMode, handleThinkingLevelChange, handleSetDefaultModel, handleSetDefaultThinkingLevel, loadSlashCommands, scrollUserMsgToTop,
+    handleToolPresetChange, handleTogglePlanMode, handleThinkingLevelChange, handleSetDefaultModel, handleSetDefaultThinkingLevel, loadSlashCommands, scrollUserMsgToTop,
     loadContext, activeLeafId, scrollToBottom, scrollToMessage,
   } = useAgentSession({
     session, sessionRunning, newSessionCwd, newSessionDraftKey, initialNewSessionChoices, onNewSessionChoicesChange, onAgentEnd: wrappedOnAgentEnd, onToolEnd, onAttentionNeeded, onSessionCreated, onSessionForked,
@@ -986,7 +986,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       toolPreset={toolPreset}
       onToolPresetChange={session || isNew ? handleToolPresetChange : undefined}
       onTogglePlanMode={session || isNew ? handleTogglePlanMode : undefined}
-      onToggleEditMode={session || isNew ? handleToggleEditMode : undefined}
       thinkingLevel={thinkingLevel}
       isAutoThinkingSelection={isAutoThinkingSelection}
       onThinkingLevelChange={session || isNew ? handleThinkingLevelChange : undefined}

@@ -29,7 +29,7 @@
 | :--- | :--- | :---: | :--- | :--- | :--- |
 | **会话管理** | **官方原生多项目会话树**<br>• 原生多项目/工作区分组<br>• 支持拖拽排序、置顶、分组折叠<br>• 服务端重启平滑自动感知刷新 | **P0** | `components/SessionSidebar.tsx`<br>`lib/session-tree.ts` | 官方原生实现 | 静态检查：包含 `buildSessionTree` 与 `serverBootId` |
 | **代码批注** | **文件预览内联批注 (Preview Annotations)**<br>• 选区就地浮动气泡（Popover Anchor）<br>• 正文持久化高亮层<br>• 右下角收敛抽屉 + 一键直达会话排队 | **P0** | `components/FileViewer.tsx`<br>`lib/markdown.ts`<br>`hooks/useSessionAnnotations.ts` | 官方无此能力 | 静态检查：`AppShell` 必须暴露 `onSendAnnotations` |
-| **底栏控制** | **Plan / Edit 模式快捷开关**<br>• `[📋 Plan]` 方案模式（只读+出方案）<br>• `[✏️ Edit]` 修改模式（只改不跑）<br>• 独立高亮状态与双向会话感知 | **P1** | `components/ChatInput.tsx` | 官方无此按钮 | 静态检查：必须包含 `aria-label="方案模式"` 与 `"修改模式"` |
+| **底栏控制** | **Plan 模式快捷开关**<br>• `[Plan]` 方案模式（只读+出方案）<br>• 独立高亮状态与双向会话感知 | **P1** | `components/ChatInput.tsx` | 官方无此按钮 | 静态检查：必须包含 `aria-label="方案模式"` |
 | **云端同步** | **个人全局配置与技能库云同步**<br>• 顶栏 `CloudSyncButton` 状态指示灯<br>• 自动感知 `~/.pi` 与远端差异<br>• 一键双向拉取/推送 | **P1** | `components/CloudSyncButton.tsx`<br>`lib/dotpi/sync-service.ts` | 官方无此机制 | 静态检查：`AppShell` 必须包含 `<CloudSyncButton` |
 | **网络代理** | **顶栏代理快捷开关 (ProxyToggle)**<br>• 一键开启/关闭/自动回退系统代理<br>• 进程级 HTTP_PROXY / HTTPS_PROXY 动态生效 | **P1** | `components/ProxyToggle.tsx`<br>`hooks/useProxySettings.ts` | 官方仅支持启动参数 | 静态检查：`AppShell` 必须包含 `<ProxyIconButton` |
 | **模型扩展** | **Google Antigravity 多账号池与配额监控**<br>• 多账号配额实时轮询与切换<br>• 智能动态模型适配器 | **P1** | `app/api/antigravity/` | 官方普通 API Key 轮询 | 静态检查：接口文件必须存在 |

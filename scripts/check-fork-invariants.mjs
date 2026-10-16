@@ -98,13 +98,6 @@ assertFileContains(
   "ChatInput 必须包含 Plan 模式切换按钮 (aria-label=\"方案模式\")"
 );
 
-assertFileContains(
-  "components/ChatInput.tsx",
-  'aria-label="修改模式"',
-  "输入栏 Edit 修改模式开关",
-  "ChatInput 必须包含 Edit 模式切换按钮 (aria-label=\"修改模式\")"
-);
-
 // 6. Mermaid 流程图语法自愈
 assertFileContains(
   "components/MermaidBlock.tsx",

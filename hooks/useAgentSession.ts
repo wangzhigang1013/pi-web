@@ -2479,37 +2479,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, [ensureNewSession, extensionStatuses, loadTools]);
 
-  const handleToggleEditMode = useCallback(async (enable?: boolean) => {
-    const sid = sessionIdRef.current ?? await ensureNewSession();
-    if (!sid) return;
-    const discussStatus = extensionStatuses.find((s) => s.key === "discuss-plan")?.text || "";
-    const isCurrentlyEdit = discussStatus.includes("修改模式") || discussStatus.includes("只改不跑");
-    const shouldEnable = enable !== undefined ? enable : !isCurrentlyEdit;
-
-    // 1. Optimistic instant UI update
-    setExtensionStatuses((prev) => {
-      const rest = prev.filter((item) => item.key !== "discuss-plan");
-      return shouldEnable ? [...rest, { key: "discuss-plan", text: "✏️ 修改模式·只改不跑" }] : rest;
-    });
-
-    try {
-      // 2. Dispatch prompt command to agent
-      await sendAgentCommand(sid, {
-        type: "prompt",
-        message: shouldEnable ? "/edit start" : "/edit exit",
-      });
-
-      // 3. Actively reconcile with authoritative agent state
-      const state = await sendAgentCommand<AgentStateResponse>(sid, { type: "get_state" });
-      if (state && Array.isArray(state.extensionStatuses)) {
-        setExtensionStatuses(state.extensionStatuses);
-      }
-      void loadTools(sid);
-    } catch (e) {
-      console.error("Failed to toggle edit mode:", e);
-    }
-  }, [ensureNewSession, extensionStatuses, loadTools]);
-
   const scrollToMessage = useCallback((element: HTMLElement, viewportOffset = 16) => {
     const container = scrollContainerRef.current;
     if (!container) return;
@@ -2857,7 +2826,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     cancelEdit: editEntryId ? cancelEdit : undefined,
     addNotice,
     setNoticePaused: setPausedNoticeId,
-    handleToolPresetChange, handleTogglePlanMode, handleToggleEditMode, handleThinkingLevelChange, handleSetDefaultModel, handleSetDefaultThinkingLevel, loadTools, loadSlashCommands, setActiveLeafId, setData, setMessages, loadContext,
+    handleToolPresetChange, handleTogglePlanMode, handleThinkingLevelChange, handleSetDefaultModel, handleSetDefaultThinkingLevel, loadTools, loadSlashCommands, setActiveLeafId, setData, setMessages, loadContext,
     scrollToBottom, scrollUserMsgToTop, scrollToMessage,
     dispatch, setAgentRunning, setForkingEntryId,
     bashRunning, pendingBash,

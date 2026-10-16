@@ -27,7 +27,12 @@ function hasDraggedFiles(e: React.DragEvent): boolean {
   );
 }
 
-function droppedItems(dataTransfer: DataTransfer): DroppedItem[] {
+/**
+ * Reads a drop's files and folders. `webkitGetAsEntry()` only answers during
+ * the drop event, so this has to run inside the handler. A folder is told by
+ * its entry first: some browsers return no `File` for it.
+ */
+export function droppedItems(dataTransfer: DataTransfer): DroppedItem[] {
   const items: DroppedItem[] = [];
   for (const item of Array.from(dataTransfer.items)) {
     if (item.kind !== "file") continue;

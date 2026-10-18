@@ -190,23 +190,25 @@ async function fetchQuotaForToken(token: string): Promise<{
     }>;
   }>;
 }> {
-  let quotaData: any = null;
+  // 1. 并发请求两个端点获取配额（生产端点提供 GEMINI MODELS，沙盒端点提供 CLAUDE AND GPT MODELS）
+  const quotaResults = await Promise.all(
+    ENDPOINTS.map(async (endpoint) => {
+      try {
+        const res = await fetch(`${endpoint}/v1internal:retrieveUserQuotaSummary`, {
+          method: "POST",
+          headers: antigravityHeaders(token),
+          body: JSON.stringify({}),
+          signal: AbortSignal.timeout(10000),
+        });
+        if (res.ok) {
+          return (await res.json()) as any;
+        }
+      } catch {}
+      return null;
+    }),
+  );
+
   let assistData: any = null;
-
-  for (const endpoint of ENDPOINTS) {
-    try {
-      const res = await fetch(`${endpoint}/v1internal:retrieveUserQuotaSummary`, {
-        method: "POST",
-        headers: antigravityHeaders(token),
-        body: JSON.stringify({}),
-      });
-      if (res.ok) {
-        quotaData = await res.json();
-        break;
-      }
-    } catch {}
-  }
-
   for (const endpoint of ENDPOINTS) {
     try {
       const res = await fetch(`${endpoint}/v1internal:loadCodeAssist`, {
@@ -215,6 +217,7 @@ async function fetchQuotaForToken(token: string): Promise<{
         body: JSON.stringify({
           metadata: { ideType: "ANTIGRAVITY", platform: "WINDOWS", pluginType: "GEMINI" },
         }),
+        signal: AbortSignal.timeout(10000),
       });
       if (res.ok) {
         assistData = await res.json();
@@ -231,39 +234,54 @@ async function fetchQuotaForToken(token: string): Promise<{
       ? `${productTier.name}${productTier.id ? ` (${productTier.id})` : ""}`
       : undefined;
 
-  const groups: Array<{
-    displayName: string;
-    buckets: Array<{
+  // 2. 深度合并两个端点的配额分组与 buckets
+  const mergedGroupsMap = new Map<
+    string,
+    {
       displayName: string;
-      remainingFraction: number;
-      resetTime?: string;
-      disabled?: boolean;
-      description?: string;
-    }>;
-  }> = [];
-
-  for (const g of quotaData?.groups || []) {
-    const buckets: any[] = [];
-    for (const b of g?.buckets || []) {
-      const isDisabled = b.disabled === true;
-      let frac = typeof b.remainingFraction === "number" ? Math.max(0, Math.min(1, b.remainingFraction)) : 0;
-      if (isDisabled) frac = 0;
-      buckets.push({
-        displayName: b.displayName || b.bucketId || "Limit",
-        remainingFraction: frac,
-        resetTime: b.resetTime,
-        disabled: isDisabled,
-        description: b.description,
-      });
+      buckets: Array<{
+        displayName: string;
+        remainingFraction: number;
+        resetTime?: string;
+        disabled?: boolean;
+        description?: string;
+      }>;
     }
-    if (buckets.length || g.displayName) {
-      groups.push({
-        displayName: g.displayName || "Quota Group",
-        buckets,
-      });
+  >();
+
+  for (const qData of quotaResults) {
+    if (!qData || !Array.isArray(qData.groups)) continue;
+    for (const g of qData.groups) {
+      if (!g) continue;
+      const key = (g.displayName || g.description || "Quota Group").trim();
+      let groupRecord = mergedGroupsMap.get(key);
+      if (!groupRecord) {
+        groupRecord = { displayName: g.displayName || key, buckets: [] };
+        mergedGroupsMap.set(key, groupRecord);
+      }
+
+      const existingBucketNames = new Set(groupRecord.buckets.map((b) => b.displayName));
+      for (const b of g.buckets || []) {
+        if (!b) continue;
+        const bName = b.displayName || b.bucketId || "Limit";
+        if (!existingBucketNames.has(bName)) {
+          const isDisabled = b.disabled === true;
+          let frac = typeof b.remainingFraction === "number" ? Math.max(0, Math.min(1, b.remainingFraction)) : 0;
+          if (isDisabled) frac = 0;
+          groupRecord.buckets.push({
+            displayName: bName,
+            remainingFraction: frac,
+            resetTime: b.resetTime,
+            disabled: isDisabled,
+            description: b.description,
+          });
+          existingBucketNames.add(bName);
+        }
+      }
     }
   }
 
+  const groups = Array.from(mergedGroupsMap.values()).filter((g) => g.buckets.length > 0);
   return { planLabel, groups };
 }
 

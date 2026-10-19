@@ -7,6 +7,7 @@ import { resolve } from "path";
 import { validateAgentImages } from "./image-attachments";
 import { invalidateModelsCache } from "./models-cache";
 import { invalidateModelRuntimeWithExtensions } from "./model-runtime";
+import { applyContextWindowLimit, clampModelContext, clampScopeModels, resolveContextWindowLimit } from "./model-context-limit";
 import { resolveVisibleModels, selectInitialModelScope } from "./model-scope";
 import { findDeferredModel, findDeferredStartupModel, rememberProviderModels } from "./deferred-provider-models";
 import { isBlockingExtensionUiRequest } from "./extension-ui-queue";
@@ -2536,6 +2537,9 @@ export async function startRpcSession(
         ? undefined
         : projectTrustReloadOptions(sessionCwd, agentDir);
     const settingsManager = SettingsManager.create(sessionCwd, agentDir);
+    // The single top-level contextWindowLimit caps every model window this session uses; read
+    // once so the runtime wrapper and the explicit startup clamps below agree on one value.
+    const contextWindowLimit = resolveContextWindowLimit(settingsManager.getSettings());
     // Chat-only sessions and subagents that replace Pi's prompt send an exact
     // system prompt. The prompt is resolved at prompt time through this inline
     // extension: it may read the session's context files, which exist only
@@ -2615,12 +2619,20 @@ export async function startRpcSession(
           },
       ...(trustReloadOptions ? { resourceLoaderReloadOptions: trustReloadOptions } : {}),
     });
+    // Wrap the session runtime's model readers so every model resolved from it (restored
+    // model, set_model, availability checks, model cycling) reports the capped window.
+    // Startup's own model values are clamped explicitly below; an unset or invalid limit
+    // wraps nothing and leaves the runtime's cost and behavior unchanged.
+    applyContextWindowLimit(services.modelRuntime, contextWindowLimit);
     if (subagentResources?.codemode
       && !services.resourceLoader.getExtensions().extensions.some((extension) => extension.tools.has("codemode"))) {
       throw new Error("Code mode is unavailable: builtin:codemode was not registered");
     }
     const enabledModels = services.settingsManager.getEnabledModels();
-    const scope = await resolveVisibleModels(services.modelRuntime, enabledModels);
+    const scope = clampScopeModels(
+      await resolveVisibleModels(services.modelRuntime, enabledModels),
+      contextWindowLimit,
+    );
     // A provider an extension registers only at session_start (lib/deferred-provider-models.ts)
     // has no model in this runtime yet: build on the default, switch once extensions are bound.
     const deferredInitialModel = initialModel && !services.modelRuntime.getModel(initialModel.provider, initialModel.modelId)
@@ -2648,16 +2660,19 @@ export async function startRpcSession(
       ? getLatestModelChange(branch as unknown as SessionEntry[])
       : null;
     const restoredModel = savedModel
-      ? services.modelRuntime.getModel(savedModel.provider, savedModel.modelId)
+      ? clampModelContext(services.modelRuntime.getModel(savedModel.provider, savedModel.modelId), contextWindowLimit)
       : undefined;
-    const initial = hasExistingMessages ? null : selectInitialModelScope(scope, {
+    const initialSelection = hasExistingMessages ? null : selectInitialModelScope(scope, {
         ...(effectiveInitialModel ? { requestedModel: effectiveInitialModel } : {}),
         ...(defaultModel ? { defaultModel } : {}),
         ...(thinkingLevel ? { thinkingLevel } : {}),
       });
+    const initial = initialSelection && initialSelection.model
+      ? { ...initialSelection, model: clampModelContext(initialSelection.model, contextWindowLimit) }
+      : initialSelection;
     const startupModel = restoredModel && services.modelRuntime.hasConfiguredAuth(restoredModel.provider)
       ? restoredModel
-      : initial?.model;
+      : clampModelContext(initial?.model, contextWindowLimit);
     // A registered default the session starts on is in scope with deferred models counted too
     // (globs and exact entries only gain matches), unless the scope fell back to every model.
     const startsOnDefault = Boolean(initial?.model && defaultModel
@@ -2671,11 +2686,12 @@ export async function startRpcSession(
         ? { requestedModel: { provider: deferredInitialModel.provider, modelId: deferredInitialModel.id } }
         : defaultModel ? { defaultModel } : {})
       : undefined;
-    const deferredModel = hasExistingMessages
+    const deferredModelRaw = hasExistingMessages
       ? savedModel && !restoredModel
         ? findDeferredModel(services.modelRuntime, savedModel.provider, savedModel.modelId)
         : undefined
       : deferredInitialModel ?? deferredStartup?.model;
+    const deferredModel = clampModelContext(deferredModelRaw, contextWindowLimit);
     // set_model applies the model's modelThinkingLevels entry, else defaultThinkingLevel, else keeps
     // the current level: the stand-in model's (clamped, or its own pin). Apply what pi's
     // createAgentSession gives this model at startup instead: a resumed session's last saved level,

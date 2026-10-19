@@ -41,6 +41,7 @@ import type { McpHost } from "./mcp-host";
 import { createSubagentMcpPolicyExtension } from "./mcp-read-only-policy";
 import { resolveShellTools } from "./powershell-settings";
 import { isBuiltInSubagentsEnabled, readSubagentSettings } from "./subagent-settings";
+import { applyContextWindowLimit, clampModelContext, resolveContextWindowLimit } from "./model-context-limit";
 import { SubagentQueue } from "./subagent-queue";
 import { addWorktree, removeWorktree } from "./worktree";
 import { randomUUID } from "node:crypto";
@@ -321,6 +322,10 @@ export function createSubagentController(
       const runInBackground = request.runInBackground ?? profile.runInBackground;
       const isolation = profile.isolation === "off" ? undefined : request.isolation ?? profile.isolation;
       const parentModelRuntime = (parent.inner as unknown as { modelRuntime: ModelRuntime }).modelRuntime;
+      // The context-window limit is read from the parent's settings; the child only gets its
+      // own SettingsManager (for its compaction parameters) further below. It caps the shared
+      // runtime and the final model passed to the session below.
+      const contextWindowLimit = resolveContextWindowLimit(parent.inner.settingsManager.getSettings());
       // Sized by the window of the model expected to read the copy, and refused before a worktree
       // or child session exists.
       const inputFiles = loadSubagentInputFiles(parent.cwd, request.inputFiles ?? [], subagentInputLimits(
@@ -416,6 +421,11 @@ export function createSubagentController(
           : {}),
       });
 
+      // The runtime is the parent's own (`modelRuntime: parentModelRuntime` above), likely already
+      // wrapped; this is a no-op then. It matters only when the parent started without a limit, so
+      // a provider registration during the child's session_start (`_refreshCurrentModelFromRegistry`)
+      // still re-resolves to a capped window instead of the raw catalog model.
+      applyContextWindowLimit(services.modelRuntime, contextWindowLimit);
       if (codemodeEnabled && !services.resourceLoader.getExtensions().extensions.some((extension) => extension.tools.has("codemode"))) {
         throw new Error("Code mode is unavailable: builtin:codemode was not registered");
       }
@@ -483,11 +493,13 @@ export function createSubagentController(
       if (thinking && !THINKING_LEVELS.has(thinking as ThinkingLevel)) {
         throw new Error(`Invalid subagent thinking level: ${thinking}`);
       }
+      // Cap the child's final model with the parent's limit (the runtime is wrapped above, but
+      // the model may come from the parent's cache or an explicit profile/call reference).
       const parentModel = parent.inner.model as ReturnType<ModelRuntime["getModel"]>;
       const { session: inner } = await createAgentSessionFromServices({
         services,
         sessionManager,
-        model: (callModel ?? profileModel)?.model ?? parentModel,
+        model: clampModelContext((callModel ?? profileModel)?.model ?? parentModel, contextWindowLimit),
         ...(thinking ? { thinkingLevel: thinking as ThinkingLevel } : {}),
         ...subagentToolOptions({ tools: activeTools, allExtensionTools, mcp: mcpEnabled }),
       });
